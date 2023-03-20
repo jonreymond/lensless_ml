@@ -5,21 +5,21 @@ import os
 
 class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
-    def __init__(self, dataset_config, indexes, seed=1):
+    def __init__(self, dataset_config, data_spec, indexes, seed=1):
         'Initialization'
         # extract filenames
-        dir_x = os.path.join(dataset_config['path'], dataset_config['lensless'])
+        dir_x = os.path.join(dataset_config['path'], data_spec['lensless'])
         x_filenames = sorted([name for name in os.listdir(dir_x)])
 
-        dir_y =  os.path.join(dataset_config['path'], dataset_config['lens'])
+        dir_y =  os.path.join(dataset_config['path'], data_spec['lens'])
         y_filenames = sorted([name for name in os.listdir(dir_y)])
 
         assert x_filenames == y_filenames, "the lensed filenames must be equal to the lensless filenames"
 
-        x_filenames = [os.path.join(dir_x, name) for name in x_filenames]
-        y_filenames = [os.path.join(dir_y, name) for name in y_filenames]
+        x_filenames = np.asarray([os.path.join(dir_x, name) for name in x_filenames])
+        y_filenames = np.asarray([os.path.join(dir_y, name) for name in y_filenames])
 
-        self.dim = dataset_config['shape']
+        self.dim = data_spec['shape']
         self.batch_size = dataset_config['batch_size']
         self.x_filenames = x_filenames[indexes]
         self.y_filenames = y_filenames[indexes]

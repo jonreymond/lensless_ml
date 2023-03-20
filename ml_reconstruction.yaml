@@ -1,13 +1,10 @@
 seed: 1
 
 dataset:
-  path: data/machin
+  path: /scratch/jreymond/unet_subset
   lens: ground_truth
   lensless: diffuser
-  spec_path: blabla
-  suffix: npy
 
-  shape: [32, 56, 3]
   psf: data/psf/tape_rgb.png
   
   n_files: null    # null to use all 
@@ -22,6 +19,7 @@ save: False
 
 train_params:
   epochs: 10
+  lpips_model: "alex"
   
 
 
