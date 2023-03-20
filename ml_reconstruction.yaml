@@ -1,0 +1,32 @@
+seed: 1
+
+dataset:
+  path: data/machin
+  lens: ground_truth
+  lensless: diffuser
+  spec_path: blabla
+  suffix: npy
+
+  shape: [32, 56, 3]
+  psf: data/psf/tape_rgb.png
+  
+  n_files: null    # null to use all 
+  batch_size: 4
+  validation_split: 0.2
+  
+  
+
+device_conv: "cuda"    # "cuda" or "cpu"
+save: False
+
+
+train_params:
+  epochs: 10
+  
+
+
+unet:
+
+  bn_eps: 0.0001
+
+
