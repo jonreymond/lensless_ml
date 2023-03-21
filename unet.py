@@ -55,7 +55,6 @@ def stack_decoder(x, filters, down_tensor, kernel_size=3):
 
 
 
-
 def u_net(shape):
     input = Input(shape=shape, name="input")
     x = input
@@ -64,17 +63,16 @@ def u_net(shape):
 
     down_tensors = []
     for enc_filter in enc_filters:
-
         x, down_tensor = stack_encoder(x, enc_filter, kernel_size=3)
-        print(down_tensor.shape, x.shape)
         down_tensors.append(down_tensor)
-    down_tensors = down_tensors[::-1]
+    
 
     ### Center ###
     x = conv_block(x, filters=enc_filters[-1], kernel_size=3)
     
 
     ### up: decoder ###
+    down_tensors = down_tensors[::-1]
     dec_filters = enc_filters[::-1]
     dec_filters = dec_filters[1:] +[dec_filters[-1]]
 

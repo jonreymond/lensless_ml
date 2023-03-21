@@ -32,7 +32,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def __len__(self):
         'Denotes the number of batches per epoch'
-        return int(np.floor(len(self.num_files) / self.batch_size))
+        return int(np.floor(self.num_files / self.batch_size))
 
 
     def __getitem__(self, index):
