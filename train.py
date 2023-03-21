@@ -12,7 +12,10 @@ from torch_to_tf import to_tf_graph
 import tensorflow as tf
 from keras import backend as K
 
+from tensorflow.keras.losses import MeanSquaredError
+
 from torchsummary import summary
+from functools import partial
 
 
 def get_lpips_name(config, data_spec):
@@ -33,26 +36,11 @@ class ChangeLossWeights(tf.keras.callbacks.Callback):
         K.set_value(self.alpha2, self.alpha2 / self.mult)
 
 
+def weighted_loss(target, output, loss_function, alpha):
+    # resample
+    return loss_function(target, output) * alpha
 
 
-
-class ConfusionMatrixCallback(tf.keras.callbacks.Callback):
-    def __init__(self, x_test, labels, output_names):
-        self.x_test = x_test
-        self.labels = labels
-        self.output_names = output_names
-
-    def on_epoch_end(self, epoch, logs=None):
-        outputs = self.model.predict(self.x_test, verbose=0)
-
-        if len(self.output_names) == 1:
-            outputs_dict = {self.output_names[0] : outputs}
-        else :
-            outputs_dict = {name: pred for name, pred in zip(self.output_names, outputs)}
-        
-        for name, y_test in self.labels.items() : 
-            print(name, 'confusion matrix')
-            print(confusion_matrix(y_test.argmax(axis=1), outputs_dict[name].argmax(axis=1)))
 
 @hydra.main(version_base=None, config_path="", config_name="ml_reconstruction")
 def main(config):
@@ -63,9 +51,6 @@ def main(config):
     spec_json_name = [name for name in os.listdir(dataset_config['path']) if '.json' in name][0]
     data_spec = json.load(open(os.path.join(dataset_config['path'], spec_json_name)))
 
-    # num_files = len([name for name in os.listdir(os.path.join(dataset_config['path'], dataset_config['lensless']))])
-    # print(num_files, data_specs['len'])
-
     indexes = np.arange(data_spec['len'])
 
     train_indexes, val_indexes = train_test_split(indexes, 
@@ -74,8 +59,6 @@ def main(config):
                                                   random_state=config['seed'])
     
     # Data Generators
-    # dataset_config.update(spec=data_specs)
-
     train_generator = DataGenerator(dataset_config, data_spec, train_indexes, config['seed'])
     val_generator = DataGenerator(dataset_config, data_spec, val_indexes, config['seed'])
 
@@ -100,10 +83,21 @@ def main(config):
 
 
     # model = Model(inputs = input, outputs = [y1,y2])
+    alpha_lpips = K.variable(0.5)
+    alpha_mse = K.variable(1)
+    
+    lpips_weighted = partial(weighted_loss, loss_function=lpips_loss, alpha=alpha_lpips)
+    mse_weighted = partial(weighted_loss, loss_function=MeanSquaredError(), alpha=alpha_mse)
 
-    # l1 = 0.5
-    # l2 = 0.3
-    # model.compile(loss = [loss1,loss2], loss_weights = [l1,l2], ...)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-03)
+
+    model = u_net(data_spec['shape'])
+
+    model.compile(loss = [lpips_weighted, mse_weighted], 
+                  optimizer = optimizer, 
+                  metrics = [lpips_loss, MeanSquaredError()])
+
+    print(model.summary())
 
 
     
