@@ -4,6 +4,7 @@ from lpips import LPIPS
 import torch
 from torch_to_tf import to_tf_graph
 from keras import backend as K
+import sys
 
 
 
@@ -31,22 +32,39 @@ def get_lpips_loss(config, data_spec):
 
     stored_lpips = tf.keras.models.load_model(lpips_path + '.pb')
     
-    lpips = lambda x, y : tf.reduce_mean(stored_lpips(input1=tf.transpose(x, perm=[0, 3, 1, 2]), input2=tf.transpose(y, perm=[0, 3, 1, 2])))
+    lpips = lambda x, y : tf.reduce_mean(stored_lpips(input1=tf.transpose(x, perm=[0, 3, 1, 2]), input2=tf.transpose(y, perm=[0, 3, 1, 2]))['output'])
     return lpips
 
 
 
 class ChangeLossWeights(tf.keras.callbacks.Callback):
-    def __init__(self, alpha1, alpha2, multiplier):
-        self.alpha1 =alpha1
-        self.alpha2 = alpha2
+    def __init__(self, alpha_minus, alpha_plus, multiplier):
+        self.alpha_minus =alpha_minus
+        self.alpha_plus = alpha_plus
         self.mult = multiplier
 
     def on_epoch_end(self, epoch, logs=None):
-        K.set_value(self.alpha1, self.alpha1 * self.mult)
-        K.set_value(self.alpha2, self.alpha2 / self.mult)
+        K.set_value(self.alpha_minus, self.alpha_minus * self.mult)
+        K.set_value(self.alpha_plus, self.alpha_plus / self.mult)
 
 
 def weighted_loss(target, output, loss_function, alpha):
     # resample
     return loss_function(target, output) * alpha
+
+class LpipsCallback(tf.keras.callbacks.Callback):
+    def __init__(self, lpips_loss, val_generator):
+        self.lpips_loss = lpips_loss
+        self.val_generator = val_generator
+
+    def on_epoch_end(self, epoch, logs=None):
+        res = []
+        print(' lpips computation...')
+        for val_data in self.val_generator:
+
+            x, y = val_data
+            x, y = tf.convert_to_tensor(x, dtype=tf.float32), tf.convert_to_tensor(y, dtype=tf.float32)
+            res.append(self.lpips_loss(x, y))
+
+        # sys.stdout.write('\r')
+        print(' \r lpips score :', (sum(res) / len(res)).numpy())

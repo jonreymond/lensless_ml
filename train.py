@@ -60,7 +60,8 @@ def main(config):
 
     print(model.summary())
 
-    callbacks = [ChangeLossWeights(alpha_lpips, alpha_mse, 0.99)]
+    callbacks = [ChangeLossWeights(alpha_plus=alpha_lpips, alpha_minus=alpha_mse, multiplier=0.1),
+                LpipsCallback(lpips_loss, val_generator)]
 
     model.fit(train_generator,
             epochs=10,
