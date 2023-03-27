@@ -6,6 +6,7 @@ from keras.layers import BatchNormalization, UpSampling2D, Concatenate, Input
 
 from keras.models import Model
 import tensorflow as tf
+from utils import *
 
 
 
@@ -30,7 +31,8 @@ def conv_block(x, filters, kernel_size, strides=1, l1_factor=0, l2_factor=0):
                 ,kernel_regularizer=regularizers.L1L2(l1=l1_factor, l2=l2_factor)
                 )(x)
 
-    x = BatchNormalization(epsilon=1e-4)(x)
+    # axis=1 for NCHW
+    x = BatchNormalization(epsilon=1e-4, axis=1)(x)
     x = Activation('relu')(x)
     return x
 
@@ -44,13 +46,19 @@ def stack_encoder(x, filters, kernel_size=(3, 3)):
 
 
 def stack_decoder(x, filters, down_tensor, kernel_size=3):
-    height, width = down_tensor.shape[1:-1]
+    height, width = down_tensor.shape[2:]
 
-    x = tf.image.resize(x, size=(height, width), method=tf.image.ResizeMethod.BILINEAR)
-    x = Concatenate(axis=-1)([x, down_tensor])
+    # TODO : check if transpose or reshape
+    x = to_channel_last(x)
+    x = tf.keras.layers.Resizing(height, width,interpolation='bilinear')(x)
+    # TODO : check if transpose or reshape
+    x = to_channel_first(x)
+
+    x = Concatenate(axis=1)([x, down_tensor])
     # decode
     for i in range(3):
         x = conv_block(x, filters, kernel_size)
+    print('--------------------------')
     return x
 
 
@@ -81,7 +89,7 @@ def u_net(shape):
 
 
     ### classifier ###
-    x = Conv2D(filters=3, kernel_size=3, use_bias=True, padding='same')(x)
+    x = Conv2D(filters=3, kernel_size=1, use_bias=True, padding='same')(x)
     return Model(inputs=[input], outputs=[x], name='u_net')
 
  

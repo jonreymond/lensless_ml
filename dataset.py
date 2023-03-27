@@ -57,7 +57,7 @@ class DataGenerator(keras.utils.Sequence):
 
         # load data TODO: check if vectorize
         for i, batch_idx in enumerate(batch_indexes):
-            X[i,] = np.load(self.x_filenames[batch_idx])
-            Y[i,] = np.load(self.y_filenames[batch_idx])
+            X[i,] = np.load(self.x_filenames[batch_idx]).transpose((2, 0, 1))
+            Y[i,] = np.load(self.y_filenames[batch_idx]).transpose((2, 0, 1))
 
         return X, Y

@@ -2,3 +2,4 @@ outputs/
 __pycache__/
 lpips_losses/
 draft.ipynb
+stored_models/

@@ -14,11 +14,12 @@ dataset:
   
 
 device_conv: "cuda"    # "cuda" or "cpu"
-save: False
-
+save: True
+model_path: stored_models
+model_name: u_net
 
 train_params:
-  epochs: 10
+  epochs: 20
   lpips_model: "alex"
   
 
