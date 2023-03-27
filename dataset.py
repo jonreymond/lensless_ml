@@ -52,8 +52,8 @@ class DataGenerator(keras.utils.Sequence):
     def __batch_generation(self, batch_indexes):
         'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
         # Initialization
-        X = np.empty((self.batch_size, *self.dim))
-        Y = np.empty((self.batch_size, *self.dim))
+        X = np.empty((self.batch_size, *self.dim), dtype=np.float32)
+        Y = np.empty((self.batch_size, *self.dim), dtype=np.float32)
 
         # load data TODO: check if vectorize
         for i, batch_idx in enumerate(batch_indexes):

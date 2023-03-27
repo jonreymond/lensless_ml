@@ -95,20 +95,4 @@ def weighted_loss(target, output, loss_function, alpha):
     # resample
     return loss_function(target, output) * alpha
 
-class LpipsCallback(tf.keras.callbacks.Callback):
-    def __init__(self, lpips_loss, val_generator):
-        self.lpips_loss = lpips_loss
-        self.val_generator = val_generator
-
-    def on_epoch_end(self, epoch, logs=None):
-        res = []
-        print(' lpips computation...')
-        for val_data in self.val_generator:
-
-            x, y = val_data
-            x, y = tf.convert_to_tensor(x, dtype=tf.float32), tf.convert_to_tensor(y, dtype=tf.float32)
-            res.append(self.lpips_loss(x, y))
-
-        # sys.stdout.write('\r')
-        print(' \r lpips score :', (sum(res) / len(res)).numpy())
 

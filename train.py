@@ -51,7 +51,11 @@ def main(config):
     lpips_loss = get_lpips_loss(config, data_spec)
 
 
-    
+    # for x,y in train_generator:
+    #     print(lpips_loss(x, y))
+    #     print(MeanSquaredError()(x, y))
+
+    #     sys.exit()
     # alpha_lpips = 1
     # alpha_mse = 1
 
@@ -61,23 +65,21 @@ def main(config):
     
     lpips_weighted = partial(weighted_loss, loss_function=lpips_loss, alpha=alpha_lpips)
     mse_weighted = partial(weighted_loss, loss_function=MeanSquaredError(), alpha=alpha_mse)
-
-    
+    loss = lambda x,y : lpips_weighted(x, y) + mse_weighted(x, y)
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-02)
 
     model = u_net(data_spec['shape'])
 
 
-    model.compile(loss = [mse_weighted, lpips_weighted], 
-                  optimizer = optimizer, 
+    model.compile(optimizer = optimizer, 
+                  loss = loss,
                   metrics = [MeanSquaredError(), lpips_loss])
 
     print(model.summary())
 
 
     callbacks = [ChangeLossWeights(alpha_plus=alpha_lpips, alpha_minus=alpha_mse, factor=1)]
-                #, LpipsCallback(lpips_loss, val_generator)]
 
     model.fit(train_generator,
             epochs=train_config['epochs'],
