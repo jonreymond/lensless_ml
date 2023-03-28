@@ -14,9 +14,13 @@ dataset:
   
 
 device_conv: "cuda"    # "cuda" or "cpu"
+
 save: True
 model_path: stored_models
 model_name: u_net
+use_tensorboard: True
+
+temp_store_path: temp
 
 train_params:
   epochs: 20

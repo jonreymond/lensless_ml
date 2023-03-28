@@ -1,7 +1,7 @@
 import setGPU
 import hydra
 from dataset import DataGenerator
-from unet import u_net
+from models.unet import u_net
 import numpy as np
 import os
 import sys
@@ -24,14 +24,16 @@ from datetime import datetime
 
 
 
-@hydra.main(version_base=None, config_path="", config_name="ml_reconstruction")
+@hydra.main(version_base=None, config_path="configs", config_name="ml_reconstruction")
 def main(config):
     
+    now = datetime.now()
 
     dataset_config = config['dataset']
 
     spec_json_name = [name for name in os.listdir(dataset_config['path']) if '.json' in name][0]
     data_spec = json.load(open(os.path.join(dataset_config['path'], spec_json_name)))
+
     h, w, c = data_spec['shape']
     data_spec['shape'] = (c, h, w)
 
@@ -51,46 +53,60 @@ def main(config):
     lpips_loss = get_lpips_loss(config, data_spec)
 
 
-    # for x,y in train_generator:
-    #     print(lpips_loss(x, y))
-    #     print(MeanSquaredError()(x, y))
-
-    #     sys.exit()
-    # alpha_lpips = 1
-    # alpha_mse = 1
-
     alpha_lpips = K.variable(1.0)
     alpha_mse = K.variable(1.0)
     
-    
-    lpips_weighted = partial(weighted_loss, loss_function=lpips_loss, alpha=alpha_lpips)
-    mse_weighted = partial(weighted_loss, loss_function=MeanSquaredError(), alpha=alpha_mse)
-    loss = lambda x,y : lpips_weighted(x, y) + mse_weighted(x, y)
+
+    mse_loss = MeanSquaredError()
+    # loss = lambda x,y : alpha_lpips * lpips_loss(x, y) + alpha_mse * mse_loss(x, y)
+    loss = LossCombiner([lpips_loss, mse_loss], [alpha_lpips, alpha_mse], name='loss_combination')
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-02)
 
     model = u_net(data_spec['shape'])
 
-
+    # TODO : define best fixed loss weighting for validation // flatnet = lpips:1.6, mse=1
     model.compile(optimizer = optimizer, 
                   loss = loss,
-                  metrics = [MeanSquaredError(), lpips_loss])
+                  metrics = [MeanSquaredError(name='mse'), 
+                             lpips_loss, 
+                             LossCombiner([lpips_loss, mse_loss], [1, 1], name='total')])
 
     print(model.summary())
 
+    if not os.path.isdir(config['temp_store_path']):
+        os.makedirs(config['temp_store_path'])
+    checkpoint_path = os.path.join(config['temp_store_path'], 'checkpoint_' + str(now.strftime("%H-%M-%S")))
+    model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
+                                            filepath=checkpoint_path,
+                                            save_weights_only=True,
+                                            monitor='val_total',
+                                            mode='min',
+                                            save_best_only=True,
+                                            save_freq="epoch",
+                                            verbose=1)
+    
+    callbacks = [ChangeLossWeights(alpha_plus=alpha_lpips, alpha_minus=alpha_mse, factor=0.1), model_checkpoint]
 
-    callbacks = [ChangeLossWeights(alpha_plus=alpha_lpips, alpha_minus=alpha_mse, factor=1)]
+    if config['use_tensorboard']:
+        tb_callback = tf.keras.callbacks.TensorBoard(os.path.join(config['temp_store_path'], 'logs'), 
+                                                     histogram_freq = 1, 
+                                                     update_freq='epoch')
+        callbacks.append(tb_callback)
+
+    
 
     model.fit(train_generator,
             epochs=train_config['epochs'],
             callbacks=callbacks,
             validation_data=val_generator,
             use_multiprocessing=True,
-            shuffle=False)
+            shuffle=True) # check if need = False
+
+    model.load_weights(checkpoint_path).expect_partial()
 
     if config['save']:
         print('saving model ...')
-        now = datetime.now()
         store_path = config['model_path'] + '/' + str(now.date())
         if not os.path.isdir(store_path):
             os.makedirs(store_path)

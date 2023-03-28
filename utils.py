@@ -6,6 +6,8 @@ from torch_to_tf import to_tf_graph
 from keras import backend as K
 import sys
 import tensorflow as tf
+from keras.losses import Loss
+
 
 
 def to_channel_last(x):
@@ -72,7 +74,7 @@ def get_lpips_loss(config, data_spec):
     else :
         lpips = lambda x, y : tf.reduce_mean(stored_lpips(input1=(x * 2 - 1), input2=(y * 2 - 1))['output'])
     
-    return lpips
+    return LossNamer(lpips, 'lpips')
 
 
 
@@ -84,15 +86,32 @@ class ChangeLossWeights(tf.keras.callbacks.Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         if (self.alpha_minus - self.fact) < 0:
-            print('no weight update, current minus value :', self.alpha_minus.numpy())
+            print('\nno weight update, current minus value :', self.alpha_minus.numpy())
         else:
             K.set_value(self.alpha_plus, self.alpha_plus + self.fact)
             K.set_value(self.alpha_minus, self.alpha_minus - self.fact)
         
 
+# TODO : transform to support dict
+class LossCombiner(Loss):
+    def __init__(self, losses, loss_weights=None, name='loss_combination'):
+        super().__init__(name=name)
+        if loss_weights:
+            assert len(losses) == len(loss_weights), 'the number of weights do not correspond to the number of losses'
+            self.loss_weights = loss_weights
+        else:
+            self.loss_weights = [1] * len(losses)
 
-def weighted_loss(target, output, loss_function, alpha):
-    # resample
-    return loss_function(target, output) * alpha
+        self.losses = losses
+
+    def call(self, y_true, y_pred):
+        return sum([weight * loss(y_true, y_pred) for weight, loss in zip(self.loss_weights, self.losses)])
 
 
+class LossNamer(Loss):
+    def __init__(self, loss, name):
+        super().__init__(name=name)
+        self.loss = loss
+
+    def call(self, y_true, y_pred):
+        return self.loss(y_true, y_pred)

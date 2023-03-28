@@ -1,3 +1,4 @@
+
 from keras.layers import GroupNormalization, Input, GlobalAveragePooling2D
 from keras.layers.convolutional import Conv2D
 from keras.layers.core import Activation
@@ -5,46 +6,53 @@ from keras.layers.core import Activation
 from keras.models import Model
 import tensorflow as tf
 import numpy as np
-
-# TODO: remove
-import torch
-import torch.nn as nn
+from tensorflow.keras.losses import MeanSquaredError
 
 
-#####################################################################
-###################### Discriminator ################################
-#####################################################################
-def conv_block(x, filters, kernel_size, strides=(1,1), activation='relu', num_groups=None):
-    x = Conv2D(filters,
-                kernel_size=kernel_size,
-                strides=strides,
-                padding='same', # TODO : check
-                )(x)
-    if num_groups:
-        x = GroupNormalization(groups=num_groups)(x)
+
+
+
+
+######################################################################
+############################# Separable ##############################
+######################################################################
+
+
+
+class SeparableLayer(tf.keras.layers.Layer):
+    """Layer used for the trainable inversion in FlatNet for the separable case
+
+    Args:
+        TODO
+    """
+    def __init__(self, W1_init, W2_init):
+        self.W1 = tf.Variable(W1_init)
+        self.W2 = tf.Variable(W2_init)
+        self.activation = tf.keras.layers.LeakyReLU(alpha=0.2)
+
+
+    def build(self, input_shape):
+        self.input_shape = input_shape
+        b, h, w, c = input_shape
+        assert h == self.W1.shape[2], "W1 width must be equal to the input height, got " + str(self.W1.shape[2]) + " and " +str(h)
+        assert w == self.W1.shape[1], "W1 height must be equal to the input width, got " + str(self.W1.shape[1]) + " and " +str(w)
+
+
+    def call(self, x):
+        #In NCHW format, o.w. see draft
+        # TODO : define best order
+        temp = tf.matmul(self.W1, x)
+        temp = tf.matmul(temp, self.W2)
+        return self.activation(temp)
     
-    x = Activation(activation=activation)(x)
-    return x
-    
-
-def get_discriminator(shape, num_groups):
-    input = Input(shape=shape, name="input")
-    x = input
-
-    filters = [64, 128, 128, 256]
-    x = conv_block(x, filters=filters[0], kernel_size=3)
-    x = conv_block(x, filters=filters[1], kernel_size=3, stride=2, num_groups=num_groups)
-    x = conv_block(x, filters=filters[2], kernel_size=3, num_groups=num_groups)
-    x = conv_block(x, filters=filters[3], kernel_size=3, num_groups=num_groups)
-    x = GlobalAveragePooling2D()(x)
-    x = Conv2D(1, kernel_size=1, padding='same')(x) # TODO: check padding
-
-    return Model(inputs=[input], outputs=[x], name='discriminator')
 
 
-###########################################
-############## fft layer ##################
-###########################################
+
+
+###########################################################################
+############################## non-separable ##############################
+###########################################################################
+
 
 def fft_conv2d(x, kernel):
     """ Computes the convolution in the frequency domain given
@@ -87,9 +95,16 @@ def get_wiener_matrix(psf, gamma: int = 20000):
 
 
 def get_psf(config_psf):
+    """Load and crop the psf
+
+    Args:
+        config_psf (dict): config of psf
+
+    Returns:
+        tensor: cropped psf tensor
+    """
     psf = tf.convert_to_tensor(np.load(config_psf.psf_path), dtype=tf.float32)
-    # Crope
-    # TODO : check if the //2 is not out (a - b ) //2
+    # Crop
     crop_top = config_psf.centre_x - config_psf.crop_size_x // 2
     crop_bottom = config_psf.centre_x + config_psf.crop_size_x // 2
     crop_left = config_psf.centre_y - config_psf.crop_size_y // 2
@@ -99,11 +114,14 @@ def get_psf(config_psf):
     return psf_crop
 
 
-
-
-
-
 class FTLayer(tf.keras.layers.Layer):
+    """Layer used for the trainable inversion in FlatNet for the non-separable case
+
+    Args:
+        config (dict) :
+        psf_crop (tf.Tensor) :
+        mask (TODO): 
+    """
     def __init__(self, config, psf_crop, mask=None):
         super(FTLayer, self).__init__()
 
@@ -160,6 +178,9 @@ class FTLayer(tf.keras.layers.Layer):
                 self.low_crop_w : self.high_crop_w,
                 :]
         return x
+    
+
+
 
 
 
@@ -205,4 +226,3 @@ class FTLayer(tf.keras.layers.Layer):
 #             ft_w // 2 - img_w // 2 : ft_w // 2 + img_w // 2,
 #             :]
 #     return x
-
