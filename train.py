@@ -55,10 +55,9 @@ def main(config):
 
     alpha_lpips = K.variable(1.0)
     alpha_mse = K.variable(1.0)
-    
 
     mse_loss = MeanSquaredError()
-    # loss = lambda x,y : alpha_lpips * lpips_loss(x, y) + alpha_mse * mse_loss(x, y)
+
     loss = LossCombiner([lpips_loss, mse_loss], [alpha_lpips, alpha_mse], name='loss_combination')
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-02)
