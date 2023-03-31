@@ -1,0 +1,28 @@
+  
+name: 'flatnet'
+path: '/scratch/bezzam/ICCV-2019-FlatNet-Dataset/Display-Captures'
+truth_folder: 'groundtruth'
+measure_folder: 'measurements'
+truth_format: JPEG
+measure_format: png
+len: 10000
+
+image_height: 344
+image_width: 379
+in_channels: 4
+out_channels: 3
+
+crop:
+  meas_height: 1518 
+  meas_width: 2012 
+  meas_crop_size_x: 1280 
+  meas_crop_size_y: 1408 
+  meas_centre_x: 808 
+  meas_centre_y: 965
+  psf_height: 1280 
+  psf_width: 1408
+  psf_crop_size_x: 1280 
+  psf_crop_size_y: 1408 
+  psf_centre_x: 808
+  psf_centre_y: 965
+

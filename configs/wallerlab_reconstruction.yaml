@@ -1,23 +1,20 @@
 defaults:
-  - dataset: flatnet_dataset
-  - model: flatnet_model
+  - dataset: wallerlab_dataset
+  - model: wallerlab_unet
 
   
 batch_size: 8
 validation_split: 0.2
-epochs: 20
+epochs: 1
 lpips_model: alex
 device_conv: cuda    # "cuda" or "cpu"
   
 
 save: True
 model_path: stored_models
-model_name: u_net
 use_tensorboard: True
 temp_store_path: "temp"
 
-use_crop: True
+use_crop: False
 
 seed: 1   # Note : will not result in a deterministic output if use cuda device
-
-gaussian_noise: 0.005

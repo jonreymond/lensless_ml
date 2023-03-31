@@ -1,0 +1,2 @@
+name: wallerlab_unet
+bn_eps: 0.0001

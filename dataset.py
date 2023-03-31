@@ -4,6 +4,7 @@ import os
 import glob
 import cv2
 import tensorflow as tf
+from utils import get_shape
 
 
 #######################################################################
@@ -12,14 +13,14 @@ import tensorflow as tf
 
 class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
-    def __init__(self, dataset_config, data_spec, indexes, seed=1):
+    def __init__(self, dataset_config, indexes, batch_size=8, use_crop=False, seed=1):
         super().__init__()
         'Initialization'
         # extract filenames
-        dir_x = os.path.join(dataset_config['path'], data_spec['lensless'])
+        dir_x = os.path.join(dataset_config['path'], dataset_config['measure_folder'])
         x_filenames = sorted([name for name in os.listdir(dir_x)])
 
-        dir_y =  os.path.join(dataset_config['path'], data_spec['lens'])
+        dir_y =  os.path.join(dataset_config['path'], dataset_config['truth_folder'])
         y_filenames = sorted([name for name in os.listdir(dir_y)])
 
         assert x_filenames == y_filenames, "the lensed filenames must be equal to the lensless filenames"
@@ -27,8 +28,9 @@ class DataGenerator(keras.utils.Sequence):
         x_filenames = np.asarray([os.path.join(dir_x, name) for name in x_filenames])
         y_filenames = np.asarray([os.path.join(dir_y, name) for name in y_filenames])
 
-        self.dim = data_spec['shape']
-        self.batch_size = dataset_config['batch_size']
+        self.in_dim = get_shape(dataset_config, output=False)
+        self.out_dim = get_shape(dataset_config, output=True)
+        self.batch_size = batch_size
         self.x_filenames = x_filenames[indexes]
         self.y_filenames = y_filenames[indexes]
         self.num_files = len(indexes)
@@ -60,8 +62,8 @@ class DataGenerator(keras.utils.Sequence):
     def __batch_generation(self, batch_indexes):
         'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
         # Initialization
-        X = np.empty((self.batch_size, *self.dim), dtype=np.float32)
-        Y = np.empty((self.batch_size, *self.dim), dtype=np.float32)
+        X = np.empty((self.batch_size, *self.in_dim), dtype=np.float32)
+        Y = np.empty((self.batch_size, *self.out_dim), dtype=np.float32)
 
         # load data TODO: check if vectorize
         for i, batch_idx in enumerate(batch_indexes):
@@ -80,31 +82,29 @@ class DataGenerator(keras.utils.Sequence):
 MAX_UINT8_VAL = 2**8 -1
 MAX_UINT16_VAL = 2**16 -1
 
-
+# TODO: Not for test, see implementation for case test
 class FlatnetDataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
-    def __init__(self, dataset_config, data_spec, indexes, seed=1):
+    def __init__(self, dataset_config, indexes, batch_size=8, use_crop=False, gaussian_noise=0, seed=1):
 
         super().__init__()
-        assert dataset_config['mode'] in ["train", "val", "test"], "Mode can be train, test or val"
 
-        self.data_spec = data_spec
-        self.dataset_config = dataset_config
+        self.data_conf = dataset_config
         # TODO : maybe define split w.r.t the parent folder and not by files
         x_filenames, y_filenames = self._get_filenames()
         # TODO : change after // here 4 channels input for input
-        self.input_dim = data_spec['input_shape']
-        self.output_dim = data_spec['output_shape']
-        self.batch_size = dataset_config['batch_size']
+        self.in_dim = get_shape(dataset_config, output=False)
+        self.out_dim = get_shape(dataset_config, output=True)
+        self.batch_size = batch_size
         self.x_filenames = x_filenames[indexes]
         self.y_filenames = y_filenames[indexes]
         self.num_files = len(indexes)
         self.indexes = np.arange(self.num_files)
         self.seed = seed
-        self.crop = False
+        self.gaussian_noise = gaussian_noise
+        self.crop = use_crop
 
-        if dataset_config['crop']['use']:
-            self.crop = True
+        if use_crop:
             self.crop_x_low = dataset_config['crop']['meas_centre_x'] - dataset_config['crop']['meas_crop_size_x'] // 2
             self.crop_x_high = self.crop_x_low + dataset_config['crop']['meas_crop_size_x']
             
@@ -137,12 +137,13 @@ class FlatnetDataGenerator(keras.utils.Sequence):
         np.random.seed(self.seed)
         np.random.shuffle(self.indexes)
 
-    def _get_filenames(self):
-        if self.dataset_config['mode'] == 'test':
-            raise NotImplementedError
 
-        dir_x = os.path.join(self.dataset_config['path'],self.data_spec['lensless'])
-        dir_y = os.path.join(self.dataset_config['path'],self.data_spec['lens'])
+    def _get_filenames(self):
+        # if self.data_conf['mode'] == 'test':
+        #     raise NotImplementedError
+
+        dir_x = os.path.join(self.data_conf['path'], self.data_conf['measure_folder'])
+        dir_y = os.path.join(self.data_conf['path'], self.data_conf['truth_folder'])
 
         x_filenames = sorted(glob.glob(dir_x + '/*/*'), key=lambda f: os.path.basename(f).replace('..png',''))
         y_filenames = sorted(glob.glob(dir_y + '/*/*'), key=lambda f: os.path.basename(f).replace('.JPEG',''))
@@ -158,8 +159,8 @@ class FlatnetDataGenerator(keras.utils.Sequence):
     def __batch_generation(self, batch_indexes):
         'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
         # Initialization
-        X = np.empty((self.batch_size, *self.input_dim), dtype=np.float32)
-        Y = np.empty((self.batch_size, *self.output_dim), dtype=np.float32)
+        X = np.empty((self.batch_size, *self.in_dim), dtype=np.float32)
+        Y = np.empty((self.batch_size, *self.out_dim), dtype=np.float32)
 
         # load data TODO: check if vectorize
         for i, batch_idx in enumerate(batch_indexes):
@@ -173,7 +174,7 @@ class FlatnetDataGenerator(keras.utils.Sequence):
         # read as uint8
         img = cv2.imread(filename)[:, :, ::-1] / MAX_UINT8_VAL
         # TODO : check if width and height in right order
-        img = cv2.resize(img, (self.dataset_config['image_width'], self.dataset_config['image_height']))
+        img = cv2.resize(img, (self.data_conf['width'], self.data_conf['height']))
 
          # Change range to [-1, 1] range
         img = (img - 0.5) * 2
@@ -184,12 +185,11 @@ class FlatnetDataGenerator(keras.utils.Sequence):
     def _get_x(self, filename):
         # -1 :return the loaded image as is (with alpha channel, otherwise it gets cropped) 
         # read as uint16
-        raw = cv2.imread(filename, -1) /MAX_UINT16_VAL
+        raw = cv2.imread(filename, -1) / MAX_UINT16_VAL
 
-        print('raw', raw.shape, raw.min(), raw.max())
 
         raw_h, raw_w = raw.shape
-        img = np.zeros((raw_h // 2, raw_w // 2, 4), dtype=np.float32)
+        img = np.zeros((raw_h // 2, raw_w // 2, self.in_dim[0]), dtype=np.float32)
 
         img[:, :, 0] = raw[0::2, 0::2]  # r
         img[:, :, 1] = raw[0::2, 1::2]  # gr
@@ -205,9 +205,9 @@ class FlatnetDataGenerator(keras.utils.Sequence):
             img = img.transpose((2, 0, 1))
             img = np.pad(img, self.padding, mode='edge')
 
-        # Change range to [-1, 1] range --> don't work since not in [0,1] range
+        # Change range to [-1, 1] range
         img = (img - 0.5) * 2
-        img += np.random.normal(size=img.shape, scale= self.dataset_config['gaussian_noise'])
+        img += np.random.normal(size=img.shape, scale=self.gaussian_noise)
         return img 
 
         

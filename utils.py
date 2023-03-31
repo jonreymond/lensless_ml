@@ -19,9 +19,6 @@ def to_channel_last(x):
     Returns:
         tf tensor: output in NHWC format
     """
-    # n, c, h, w = x.shape
-    # return tf.keras.layers.Reshape((h, w, c))(x)
-    # return tf.reshape(x, (n, h, w, c))
     return tf.keras.layers.Permute([2, 3, 1])(x)
     
     
@@ -35,39 +32,40 @@ def to_channel_first(x):
     Returns:
         tf tensor: output in NCHW format
     """
-    # n, h, w, c = x.shape
-    # return tf.keras.layers.Reshape((c, h, w))(x)
     return tf.keras.layers.Permute([3, 1, 2])(x)
-    # return tf.transpose(images_nhwc, [0, 3, 1, 2])
+
+def get_shape(data_config, output=True):
+    c = data_config['truth_channels'] if output else data_config['measure_channels']
+    return (c, data_config['height'], data_config['width'])
 
 
 
-def get_lpips_loss(config, data_spec):
-    dataset_config = config['dataset']
-    train_config = config['train_params']
+def get_lpips_loss(config):
+
     if not os.path.isdir('lpips_losses'):
         os.makedirs('lpips_losses')
 
-    def get_lpips_name(config, data_spec):
+    shape = get_shape(config['dataset'])
+
+    def get_lpips_name():
         shape_str = ''
-        for s in data_spec['shape']:
+        for s in shape:
             shape_str += '_' + str(s)
-        return 'lpips_' + config['train_params']['lpips_model'] + '_shape' + shape_str
+        return 'lpips_' + config['lpips_model'] + '_shape' + shape_str
     
-    lpips_path = os.path.join('lpips_losses', get_lpips_name(config, data_spec))
+    lpips_path = os.path.join('lpips_losses', get_lpips_name())
 
     if not os.path.isfile(lpips_path + '.pb'):
-        lpips_loss = LPIPS(net=train_config ['lpips_model']).cuda()
+        lpips_loss = LPIPS(net=config['lpips_model']).cuda()
         #change to satisfy with torch order : first channels
-        sample_input = (torch.randn(dataset_config['batch_size'], *data_spec['shape'], requires_grad=False).cuda(),
-                        torch.randn(dataset_config['batch_size'], *data_spec['shape'], requires_grad=False).cuda())
+        sample_input = (torch.randn(config['batch_size'], *shape, requires_grad=False).cuda(),
+                        torch.randn(config['batch_size'], *shape, requires_grad=False).cuda())
         to_tf_graph(lpips_loss, sample_input, lpips_path)
 
     stored_lpips = tf.keras.models.load_model(lpips_path + '.pb')
     
-    # lpips = lambda x, y : tf.reduce_mean(stored_lpips(input1=tf.transpose(x, perm=[0, 3, 1, 2]), input2=tf.transpose(y, perm=[0, 3, 1, 2]))['output'])
 
-    if 'crop' in data_spec:
+    if config['use_crop']:
         lpips = lambda x, y : tf.reduce_mean(stored_lpips(input1=x, 
                                                           input2=y
                                                           )['output'])
