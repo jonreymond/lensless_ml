@@ -7,7 +7,7 @@ from keras import backend as K
 import sys
 import tensorflow as tf
 from keras.losses import Loss
-
+import yaml
 
 
 def to_channel_last(x):
@@ -34,10 +34,21 @@ def to_channel_first(x):
     """
     return tf.keras.layers.Permute([3, 1, 2])(x)
 
-def get_shape(data_config, output=True):
-    c = data_config['truth_channels'] if output else data_config['measure_channels']
-    return (c, data_config['height'], data_config['width'])
 
+def get_shape(data_config, measure):
+    pref = 'measure_' if measure else 'truth_'
+    return (data_config[pref + 'channels'], 
+            data_config[pref + 'height'], 
+            data_config[pref + 'width'])
+
+
+def get_config_from_yaml(path):
+    with open(path, "r") as stream:
+        try:
+            config = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+    return config
 
 
 def get_lpips_loss(config):

@@ -182,6 +182,15 @@ class FTLayer(tf.keras.layers.Layer):
 
 
 
+def get_camera_inversion(input_shape, ft_args, enhancer_model):
+    input = Input(shape=input_shape)
+    x = FTLayer(**ft_args)
+    output = enhancer_model(x)
+    return Model(input=input, output=output, name='Generator')
+
+
+
+
 
 
 # def get_fftlayer(x, config, psf_crop, mask=None):

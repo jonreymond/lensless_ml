@@ -7,10 +7,19 @@ truth_format: JPEG
 measure_format: png
 len: 10000
 
-image_height: 344
-image_width: 379
-in_channels: 4
-out_channels: 3
+
+raw_truth_height: 344
+raw_truth_width: 379
+# For resizing w.r.t the FoV of the prototype
+truth_height: 384
+truth_width: 384
+truth_channels: 3
+
+measure_height: 512
+measure_width: 640
+# Bayer measurements
+measure_channels: 4
+
 
 crop:
   meas_height: 1518 

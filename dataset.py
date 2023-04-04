@@ -28,8 +28,8 @@ class DataGenerator(keras.utils.Sequence):
         x_filenames = np.asarray([os.path.join(dir_x, name) for name in x_filenames])
         y_filenames = np.asarray([os.path.join(dir_y, name) for name in y_filenames])
 
-        self.in_dim = get_shape(dataset_config, output=False)
-        self.out_dim = get_shape(dataset_config, output=True)
+        self.in_dim = get_shape(dataset_config, measure=True)
+        self.out_dim = get_shape(dataset_config, measure=False)
         self.batch_size = batch_size
         self.x_filenames = x_filenames[indexes]
         self.y_filenames = y_filenames[indexes]
@@ -93,8 +93,8 @@ class FlatnetDataGenerator(keras.utils.Sequence):
         # TODO : maybe define split w.r.t the parent folder and not by files
         x_filenames, y_filenames = self._get_filenames()
         # TODO : change after // here 4 channels input for input
-        self.in_dim = get_shape(dataset_config, output=False)
-        self.out_dim = get_shape(dataset_config, output=True)
+        self.in_dim = get_shape(dataset_config, measure=True)
+        self.out_dim = get_shape(dataset_config, measure=False)
         self.batch_size = batch_size
         self.x_filenames = x_filenames[indexes]
         self.y_filenames = y_filenames[indexes]
@@ -165,6 +165,9 @@ class FlatnetDataGenerator(keras.utils.Sequence):
         # load data TODO: check if vectorize
         for i, batch_idx in enumerate(batch_indexes):
             # numpy image: H x W x C
+            a = self._get_x(self.x_filenames[batch_idx])
+            b = self._get_y(self.y_filenames[batch_idx])
+            print(a.shape, b.shape)
             X[i,] = self._get_x(self.x_filenames[batch_idx])
             Y[i,] = self._get_y(self.y_filenames[batch_idx])
         return X, Y
@@ -174,7 +177,7 @@ class FlatnetDataGenerator(keras.utils.Sequence):
         # read as uint8
         img = cv2.imread(filename)[:, :, ::-1] / MAX_UINT8_VAL
         # TODO : check if width and height in right order
-        img = cv2.resize(img, (self.data_conf['width'], self.data_conf['height']))
+        img = cv2.resize(img, (self.data_conf['truth_width'], self.data_conf['truth_height']))
 
          # Change range to [-1, 1] range
         img = (img - 0.5) * 2
@@ -201,9 +204,11 @@ class FlatnetDataGenerator(keras.utils.Sequence):
             # Replicate padding
             img = img[self.crop_x_low : self.crop_x_high,
                       self.crop_y_low : self.crop_y_high,]
-            
             img = img.transpose((2, 0, 1))
             img = np.pad(img, self.padding, mode='edge')
+
+        else :
+            img = img.transpose((2, 0, 1))
 
         # Change range to [-1, 1] range
         img = (img - 0.5) * 2

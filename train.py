@@ -13,8 +13,9 @@ from utils import *
 import tensorflow as tf
 tf.keras.backend.set_image_data_format('channels_first')
 from keras import backend as K
+from keras.callbacks import ReduceLROnPlateau
 
-from tensorflow.keras.losses import MeanSquaredError
+from keras.losses import MeanSquaredError
 
 from torchsummary import summary
 
@@ -78,7 +79,9 @@ def main(config):
                                             save_freq="epoch",
                                             verbose=1)
     
-    callbacks = [ChangeLossWeights(alpha_plus=alpha_lpips, alpha_minus=alpha_mse, factor=0.1), model_checkpoint]
+    reduce_lr = ReduceLROnPlateau(monitor='val_total', factor=0.1, patience=3, min_lr=6e-08, verbose=1)
+    
+    callbacks = [ChangeLossWeights(alpha_plus=alpha_lpips, alpha_minus=alpha_mse, factor=0.1), model_checkpoint, reduce_lr]
 
     if config['use_tensorboard']:
         tb_callback = tf.keras.callbacks.TensorBoard(os.path.join(config['temp_store_path'], 'logs'), 
