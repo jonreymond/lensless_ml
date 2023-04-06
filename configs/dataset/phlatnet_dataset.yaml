@@ -1,17 +1,16 @@
   
-name: 'flatnet'
-path: '/scratch/bezzam/ICCV-2019-FlatNet-Dataset/Display-Captures'
-psf_path: 
-truth_folder: 'groundtruth'
-measure_folder: 'measurements'
+name: 'phlatnet'
+path: '/scratch/jreymond/phlatnet'
+truth_folder: 'orig_sample'
+measure_folder: 'imagenet_caps_383_12bit_Feb_19_sample'
 truth_format: JPEG
 measure_format: png
-len: 10000
+len: 323 #10000, for sample
 
 mask_path : 'TODO'
 
 psf:
-  path: "TODO"
+  path: '/scratch/jreymond/phlatnet/phase_psf/psf.npy'
   height: 1280 
   width: 1408
   crop_size_x: 1280 
@@ -25,13 +24,13 @@ raw_truth_width: 379
 truth_height: 384
 truth_width: 384
 truth_channels: 3
-
+# output of measurement after cropping
 measure_height: 512
 measure_width: 640
 # Bayer measurements
 measure_channels: 4
 
-# meas = measure
+
 crop:
   meas_height: 1518 
   meas_width: 2012 

@@ -8,6 +8,12 @@ import sys
 import tensorflow as tf
 from keras.losses import Loss
 import yaml
+import numpy as np
+import cv2
+
+
+MAX_UINT16_VAL = 2**16 -1
+
 
 
 def to_channel_last(x):
@@ -56,7 +62,7 @@ def get_lpips_loss(config):
     if not os.path.isdir('lpips_losses'):
         os.makedirs('lpips_losses')
 
-    shape = get_shape(config['dataset'])
+    shape = get_shape(config['dataset'], measure=False)
 
     def get_lpips_name():
         shape_str = ''
@@ -124,3 +130,17 @@ class LossNamer(Loss):
 
     def call(self, y_true, y_pred):
         return self.loss(y_true, y_pred)
+
+
+def extract_bayer(arr):
+    raw_h, raw_w = arr.shape
+    img = np.zeros((raw_h // 2, raw_w // 2, 4), dtype=np.float32)
+
+    img[:, :, 0] = arr[0::2, 0::2]  # r
+    img[:, :, 1] = arr[0::2, 1::2]  # gr
+    img[:, :, 2] = arr[1::2, 0::2]  # gb
+    img[:, :, 3] = arr[1::2, 1::2]  # b
+    # tform = skimage.transform.SimilarityTransform(rotation=0.00174)
+    # im1=skimage.transform.warp(im1,tform)
+    return img
+        

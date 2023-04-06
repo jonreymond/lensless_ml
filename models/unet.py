@@ -10,7 +10,7 @@ from utils import *
 
 
 
-def conv_block(x, filters, kernel_size, strides=1, l1_factor=0, l2_factor=0):
+def conv_block(x, filters, kernel_size, strides=1, bn_eps=1e-3, l1_factor=0, l2_factor=0):
     '''Convolution block : convolution --> batchnormalization --> relu
     Args:
         x (input): input
@@ -32,51 +32,48 @@ def conv_block(x, filters, kernel_size, strides=1, l1_factor=0, l2_factor=0):
                 )(x)
 
     # axis=1 for NCHW
-    x = BatchNormalization(epsilon=1e-4, axis=1)(x)
+    x = BatchNormalization(epsilon=bn_eps, axis=1)(x)
     x = Activation('relu')(x)
     return x
 
 
-def stack_encoder(x, filters, kernel_size=(3, 3)):
-    x = conv_block(x, filters, kernel_size)
-    x = conv_block(x, filters, kernel_size)
+def stack_encoder(x, filters, kernel_size=(3, 3), bn_eps=1e-3):
+    x = conv_block(x, filters, kernel_size, bn_eps=bn_eps)
+    x = conv_block(x, filters, kernel_size, bn_eps=bn_eps)
     down_tensor = x
     x_small = MaxPooling2D(pool_size=2, strides=2)(x)
     return x_small, down_tensor
 
 
-def stack_decoder(x, filters, down_tensor, kernel_size=3):
+def stack_decoder(x, filters, down_tensor, kernel_size=3, bn_eps=1e-3, num_conv=2):
     height, width = down_tensor.shape[2:]
 
-    # TODO : check if transpose or reshape
     x = to_channel_last(x)
     x = tf.keras.layers.Resizing(height, width,interpolation='bilinear')(x)
-    # TODO : check if transpose or reshape
     x = to_channel_first(x)
 
     x = Concatenate(axis=1)([x, down_tensor])
-    # decode
-    for i in range(3):
-        x = conv_block(x, filters, kernel_size)
-    print('--------------------------')
+    # decode : TODO : normally only 2
+    for i in range(num_conv):
+        x = conv_block(x, filters, kernel_size, bn_eps=bn_eps)
+
     return x
 
 
 
-def u_net(shape):
+def u_net(shape, enc_filters, name='unet', last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3):
     input = Input(shape=shape, name="input")
     x = input
     ### down: encoder ###
-    enc_filters = [24, 64, 128, 256, 512]
 
     down_tensors = []
     for enc_filter in enc_filters:
-        x, down_tensor = stack_encoder(x, enc_filter, kernel_size=3)
+        x, down_tensor = stack_encoder(x, enc_filter, kernel_size=3, bn_eps=bn_eps)
         down_tensors.append(down_tensor)
     
 
     ### Center ###
-    x = conv_block(x, filters=enc_filters[-1], kernel_size=3)
+    x = conv_block(x, filters=enc_filters[-1], kernel_size=3, bn_eps=bn_eps)
     
 
     ### up: decoder ###
@@ -85,12 +82,13 @@ def u_net(shape):
     dec_filters = dec_filters[1:] +[dec_filters[-1]]
 
     for dec_filter, down_tensor in zip(dec_filters, down_tensors):
-        x = stack_decoder(x, dec_filter, down_tensor, kernel_size=3)
+        x = stack_decoder(x, dec_filter, down_tensor, kernel_size=3, bn_eps=bn_eps, num_conv=num_dec_conv)
 
-
-    ### classifier ###
+    if last_conv_filter:
+        x = conv_block(x, last_conv_filter, kernel_size=3)
+    ### "classifier" ###
     x = Conv2D(filters=3, kernel_size=1, use_bias=True, padding='same')(x)
-    return Model(inputs=[input], outputs=[x], name='u_net')
+    return Model(inputs=[input], outputs=[x], name=name)
 
  
     

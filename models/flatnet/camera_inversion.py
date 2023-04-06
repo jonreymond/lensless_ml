@@ -1,12 +1,15 @@
 
-from keras.layers import GroupNormalization, Input, GlobalAveragePooling2D
+from keras.layers import GroupNormalization, Input, GlobalAveragePooling2D, Reshape, ZeroPadding2D, Multiply
 from keras.layers.convolutional import Conv2D
 from keras.layers.core import Activation
 
 from keras.models import Model
 import tensorflow as tf
 import numpy as np
-from tensorflow.keras.losses import MeanSquaredError
+from keras.losses import MeanSquaredError
+from models.unet import u_net
+
+from utils import *
 
 
 
@@ -59,22 +62,23 @@ def fft_conv2d(x, kernel):
     Expects input and kernel already in frequency domain
 
     Args:
-        x (tensor): shape (B, H, W, Cin)
-        kernel (tensor): shape 
+        x (tensor): shape (C, B, H, W)
+        kernel (tensor): shape (H, W, C)
     """
-    b, h, w, c = kernel.shape
-    kernel = tf.reshape(kernel, (b, c, h, w))
-
-    b, h, w, c = x.shape
-    x = tf.reshape(x, (b, c, h, w))
-
+    
+    x = to_channel_last(x)
+    print('x shape before :', x.shape)
     x = tf.signal.rfft2d(x)
+    print('x shape after :', x.shape)
+    
+    print('kernel shape before :', kernel.shape)
     kernel = tf.signal.rfft2d(kernel)
-
+    
+    kernel = tf.expand_dims(kernel, axis=0)
+    print('kernel shape after:', kernel.shape)
     result = tf.signal.irfft2d(x * kernel)
-    b, c, h, w = result.shape
-    result = tf.reshape(result, (b, h, w, c))
-    return result
+
+    return to_channel_first(result)
 
 
 def get_wiener_matrix(psf, gamma: int = 20000):
@@ -87,14 +91,15 @@ def get_wiener_matrix(psf, gamma: int = 20000):
     Returns:
         tensor: wiener filter of psf
     """
-    H = tf.signal.fft2d(psf)
+    H = tf.signal.rfft2d(psf)
     H_conj = tf.math.conj(H)
     H_absq = tf.math.abs(H)**2
-    res = tf.signal.irfft2d(H_conj / tf.cast(gamma + H_absq, tf.complex128))
+
+    res = tf.signal.irfft2d(H_conj / tf.cast(gamma + H_absq, tf.complex64))
     return res
 
 
-def get_psf(config_psf):
+def get_psf_cropped(psf_config):
     """Load and crop the psf
 
     Args:
@@ -103,12 +108,13 @@ def get_psf(config_psf):
     Returns:
         tensor: cropped psf tensor
     """
-    psf = tf.convert_to_tensor(np.load(config_psf.psf_path), dtype=tf.float32)
+    psf = extract_bayer(np.load(psf_config['path']))
+    psf = tf.convert_to_tensor(psf, dtype=tf.float32)
     # Crop
-    crop_top = config_psf.centre_x - config_psf.crop_size_x // 2
-    crop_bottom = config_psf.centre_x + config_psf.crop_size_x // 2
-    crop_left = config_psf.centre_y - config_psf.crop_size_y // 2
-    crop_right = config_psf.centre_y + config_psf.crop_size_y // 2
+    crop_top = psf_config['centre_x'] - psf_config['crop_size_x'] // 2
+    crop_bottom = psf_config['centre_x'] + psf_config['crop_size_x'] // 2
+    crop_left = psf_config['centre_y'] - psf_config['crop_size_y'] // 2
+    crop_right = psf_config['centre_y'] + psf_config['crop_size_y'] // 2
 
     psf_crop = psf[crop_top:crop_bottom, crop_left:crop_right]
     return psf_crop
@@ -122,27 +128,32 @@ class FTLayer(tf.keras.layers.Layer):
         psf_crop (tf.Tensor) :
         mask (TODO): 
     """
-    def __init__(self, config, psf_crop, mask=None):
+    def __init__(self, config, psf_cropped, mask=None):
         super(FTLayer, self).__init__()
 
-        wiener_crop = get_wiener_matrix(psf_crop, gamma=config['wiener_gamma'])
+        wiener_crop = get_wiener_matrix(psf_cropped, gamma=config['wiener_gamma'])
         # TODO : define if better use add_weight
-        self.wiener_crop = tf.Variable(wiener_crop)
-        self.normalizer = tf.Variable(1 / 0.0008, shape=(1, 1, 1, 1))
 
-        psf_config = config['psf']
+        self.wiener_crop = tf.Variable(wiener_crop)
+
+
+        self.normalizer = tf.Variable([[[[1 / 0.0008]]]], shape=(1, 1, 1, 1))
+
+        data_config = config['dataset']
+        psf_config = data_config['psf']
         self.pad_x = (psf_config['height'] - psf_config['crop_size_x']) // 2
         self.pad_y = (psf_config['width'] - psf_config['crop_size_y']) // 2
 
 
         ft_test = tf.zeros(self.wiener_crop.shape)
-        ft_test = tf.pad(ft_test, ((self.pad_y, self.pad_y), (self.pad_x, self.pad_x)), "CONSTANT")
+        ft_test = tf.pad(ft_test, ((self.pad_y, self.pad_y), (self.pad_x, self.pad_x), (0, 0)), "CONSTANT")
         for axis in range(2):
             ft_test = tf.roll(ft_test, axis=axis, shift=-(ft_test.shape[axis] // 2))
 
-        ft_h, ft_w = ft_test.shape
-        img_h = config['image']['height']
-        img_w = config['image']['width']
+        ft_h, ft_w, _ = ft_test.shape
+
+        img_h = data_config['truth_height']
+        img_w = data_config['truth_width']
         self.low_crop_h = ft_h // 2 - img_h // 2    
         self.high_crop_h = ft_h // 2 + img_h // 2  
 
@@ -155,38 +166,67 @@ class FTLayer(tf.keras.layers.Layer):
 
 
     def build(self, input_shape):
-        self.input_shape = input_shape
+        # self.input_shape = input_shape
+        _, c, h, w = input_shape
+
+        x_diff = self.ft_h - h
+        y_diff = self.ft_w - w
+        h_before = x_diff // 2
+        h_after = x_diff - h_before
+        w_before = y_diff // 2
+        w_after = y_diff - w_before
+        self.pad_input = ((h_before, h_after), (w_before, w_after))
+        return
         
 
     def call(self, x):
         # TODO: why not in __init__ ? other reason to not use directly wiener_crop ?
         # pad for fft, way to simplify ?
         ft_layer = 1 * self.wiener_crop
-        ft_layer = tf.pad(ft_layer, ((self.pad_y, self.pad_y), (self.pad_x, self.pad_x)), "CONSTANT")
+        # print('ft layer before:', ft_layer.shape)
+        # print((self.pad_y, self.pad_y), (self.pad_x, self.pad_x))
+        ft_layer = tf.pad(ft_layer, ((self.pad_y, self.pad_y), (self.pad_x, self.pad_x), (0, 0)), "CONSTANT")
         for axis in range(2):
             ft_layer = tf.roll(ft_layer, axis=axis, shift=-(ft_layer.shape[axis] // 2))
-        ft_layer = tf.reshape(ft_layer, (1, self.ft_h, self.ft_w, 1))
 
+        # print('ft layer after:', ft_layer.shape)
+        # print(ft_layer.shape)
+        # TODO : change # channels 
+        # ft_layer = tf.reshape(ft_layer, (1, 1, self.ft_h, self.ft_w))
+        # ft_layer =  Reshape((self.ft_h, self.ft_w, 1))(ft_layer)
+        # sys.exit()
+
+        # to range [0, 1]
         x = 0.5 * x + 0.5
+
         if self.mask:
             x = x * self.mask
 
+        x = ZeroPadding2D(padding=self.pad_input)(x)
+
         x = fft_conv2d(x, ft_layer) * self.normalizer
+
         # Centre Crop
-        x = x[  :,
+        x = x[  :, :, 
                 self.low_crop_h : self.high_crop_h,
-                self.low_crop_w : self.high_crop_w,
-                :]
+                self.low_crop_w : self.high_crop_w]
+
         return x
     
 
 
 
-def get_camera_inversion(input_shape, ft_args, enhancer_model):
+def get_inversion_model(config, input_shape):
+    
+
     input = Input(shape=input_shape)
-    x = FTLayer(**ft_args)
+
+    psf_cropped = get_psf_cropped(config['dataset']['psf'])
+    mask = np.load(config['dataset']['mask_path'], np.float32) if config['use_mask'] else None
+    x = FTLayer(config, psf_cropped=psf_cropped, mask=mask)(input)
+    enhancer_model = u_net(x.shape[1:], **config['model']['enhancer']['unet32'])
     output = enhancer_model(x)
-    return Model(input=input, output=output, name='Generator')
+    return Model(inputs=[input], outputs=[output], name='Generator')
 
 
 

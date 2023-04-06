@@ -1,7 +1,12 @@
 import setGPU
 import hydra
-from dataset import DataGenerator
-from models.unet import u_net
+from dataset import FlatnetDataGenerator
+
+
+from models.flatnet.discriminator import *
+from models.flatnet.camera_inversion import *
+from models.flatnet.gan import *
+
 import numpy as np
 import os
 import sys
@@ -12,6 +17,7 @@ from utils import *
 
 import tensorflow as tf
 tf.keras.backend.set_image_data_format('channels_first')
+
 from keras import backend as K
 from keras.callbacks import ReduceLROnPlateau
 
@@ -25,7 +31,7 @@ from datetime import datetime
 
 
 
-@hydra.main(version_base=None, config_path="configs", config_name="wallerlab_reconstruction")
+@hydra.main(version_base=None, config_path="configs", config_name="flatnet_reconstruction")
 def main(config):
     
     now = datetime.now()
@@ -40,31 +46,39 @@ def main(config):
                                                   random_state=config['seed'])
     
     # Data Generators
-    train_generator = DataGenerator(dataset_config, train_indexes, config['batch_size'], config['seed'])
-    val_generator = DataGenerator(dataset_config,  val_indexes, config['batch_size'], config['seed'])
+    train_generator = FlatnetDataGenerator(dataset_config, train_indexes, config['batch_size'], config['seed'])
+    val_generator = FlatnetDataGenerator(dataset_config,  val_indexes, config['batch_size'], config['seed'])
 
 
     lpips_loss = get_lpips_loss(config)
 
-
     alpha_lpips = K.variable(1.0)
     alpha_mse = K.variable(1.0)
 
-    mse_loss = MeanSquaredError()
-
-    loss = LossCombiner([lpips_loss, mse_loss], [alpha_lpips, alpha_mse], name='loss_combination')
-
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-02)
 
-    model = u_net(get_shape(dataset_config, measure=True), **config['model'])
 
-    # TODO : define best fixed loss weighting for validation // flatnet = lpips:1.6, mse=1
-    model.compile(optimizer = optimizer, 
-                  loss = loss,
-                  metrics = [MeanSquaredError(name='mse'), 
-                             lpips_loss, 
-                             LossCombiner([lpips_loss, mse_loss], [1, 1], name='total')])
+    discriminator = get_discriminator(get_shape(dataset_config, measure=False))
 
+    input_shape = get_shape(dataset_config, measure=True)  
+    output_shape = get_shape(dataset_config, measure=False)                 
+
+
+    inversion_model = get_inversion_model(config, input_shape)
+
+    model = FlatNetGAN(discriminator, inversion_model)
+
+
+    # TODO : put flatnet args instead = lpips:1.6, mse=1
+    model.compile(d_optimizer='adam',
+                  g_optimizer='adam',
+                  g_perceptual_loss=lpips_loss,
+                  adv_weight=1,
+                  mse_weight=1,
+                  perc_weight=1)
+    
+    model.build(Input(shape=input_shape).shape)
+        
     print(model.summary())
 
     if not os.path.isdir(config['temp_store_path']):

@@ -1,5 +1,5 @@
 defaults:
-  - dataset: flatnet_dataset
+  - dataset: phlatnet_dataset
   - model: flatnet_model
 
   
@@ -17,7 +17,10 @@ use_tensorboard: True
 temp_store_path: "temp"
 
 use_crop: True
+use_mask: False
 
 seed: 1   # Note : will not result in a deterministic output if use cuda device
 
 gaussian_noise: 0.005
+
+wiener_gamma: 50000
