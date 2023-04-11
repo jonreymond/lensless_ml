@@ -4,7 +4,7 @@ import os
 import glob
 import cv2
 import tensorflow as tf
-from utils import get_shape
+from utils import get_shape, rgb2gray
 
 
 #######################################################################
@@ -13,7 +13,7 @@ from utils import get_shape
 
 class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
-    def __init__(self, dataset_config, indexes, batch_size=8, use_crop=False, seed=1):
+    def __init__(self, dataset_config, indexes, greyscale=False, batch_size=8, use_crop=False, seed=1):
         super().__init__()
         'Initialization'
         # extract filenames
@@ -28,14 +28,15 @@ class DataGenerator(keras.utils.Sequence):
         x_filenames = np.asarray([os.path.join(dir_x, name) for name in x_filenames])
         y_filenames = np.asarray([os.path.join(dir_y, name) for name in y_filenames])
 
-        self.in_dim = get_shape(dataset_config, measure=True)
-        self.out_dim = get_shape(dataset_config, measure=False)
+        self.in_dim = get_shape(dataset_config, measure=True, greyscale=greyscale)
+        self.out_dim = get_shape(dataset_config, measure=False, greyscale=greyscale)
         self.batch_size = batch_size
         self.x_filenames = x_filenames[indexes]
         self.y_filenames = y_filenames[indexes]
         self.num_files = len(indexes)
         self.indexes = np.arange(self.num_files)
         self.seed = seed
+        self.greyscale = greyscale
 
         self.on_epoch_end()
 
@@ -68,8 +69,8 @@ class DataGenerator(keras.utils.Sequence):
         # load data TODO: check if vectorize
         for i, batch_idx in enumerate(batch_indexes):
             # numpy image: H x W x C
-            X[i,] = np.load(self.x_filenames[batch_idx]).transpose((2, 0, 1))
-            Y[i,] = np.load(self.y_filenames[batch_idx]).transpose((2, 0, 1))
+            X[i,] = rgb2gray(np.load(self.x_filenames[batch_idx])).transpose((2, 0, 1))
+            Y[i,] = rgb2gray(np.load(self.y_filenames[batch_idx])).transpose((2, 0, 1))
 
         return X, Y
     

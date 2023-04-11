@@ -87,7 +87,9 @@ def u_net(shape, enc_filters, name='unet', last_conv_filter=None, num_dec_conv=2
     if last_conv_filter:
         x = conv_block(x, last_conv_filter, kernel_size=3)
     ### "classifier" ###
-    x = Conv2D(filters=3, kernel_size=1, use_bias=True, padding='same')(x)
+    num_outputs = 3 if shape[0] != 1 else 1
+
+    x = Conv2D(filters=num_outputs, kernel_size=1, use_bias=True, padding='same')(x)
     return Model(inputs=[input], outputs=[x], name=name)
 
  

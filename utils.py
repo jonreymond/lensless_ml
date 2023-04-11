@@ -12,8 +12,29 @@ import numpy as np
 import cv2
 
 
+
 MAX_UINT16_VAL = 2**16 -1
 
+
+# from project
+def rgb2gray(rgb, weights=None):
+    """
+    Convert RGB array to grayscale.
+    Parameters
+    ----------
+    rgb : :py:class:`~numpy.ndarray`
+        (N_height, N_width, N_channel) image.
+    weights : :py:class:`~numpy.ndarray`
+        [Optional] (3,) weights to convert from RGB to grayscale.
+    Returns
+    -------
+    img :py:class:`~numpy.ndarray`
+        Grayscale image of dimension (height, width).
+    """
+    if weights is None:
+        weights = np.array([0.299, 0.587, 0.114])
+    assert len(weights) == 3
+    return np.expand_dims(np.tensordot(rgb, weights, axes=((2,), 0)), -1)
 
 
 def to_channel_last(x):
@@ -41,11 +62,16 @@ def to_channel_first(x):
     return tf.keras.layers.Permute([3, 1, 2])(x)
 
 
-def get_shape(data_config, measure):
+def get_shape(data_config, measure, greyscale=False):
     pref = 'measure_' if measure else 'truth_'
-    return (data_config[pref + 'channels'], 
-            data_config[pref + 'height'], 
-            data_config[pref + 'width'])
+    if greyscale :
+        return (1, 
+                data_config[pref + 'height'], 
+                data_config[pref + 'width'])
+    else:
+        return (data_config[pref + 'channels'], 
+                data_config[pref + 'height'], 
+                data_config[pref + 'width'])
 
 
 def get_config_from_yaml(path):
@@ -62,7 +88,7 @@ def get_lpips_loss(config):
     if not os.path.isdir('lpips_losses'):
         os.makedirs('lpips_losses')
 
-    shape = get_shape(config['dataset'], measure=False)
+    shape = get_shape(config['dataset'], measure=False, greyscale=config['greyscale'])
 
     def get_lpips_name():
         shape_str = ''

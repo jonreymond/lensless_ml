@@ -9,6 +9,7 @@ epochs: 1
 lpips_model: alex
 device_conv: cuda    # "cuda" or "cpu"
   
+greyscale: True
 
 save: True
 model_path: stored_models
