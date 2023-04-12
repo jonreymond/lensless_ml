@@ -8,7 +8,9 @@ validation_split: 0.2
 epochs: 20
 lpips_model: alex
 device_conv: cuda    # "cuda" or "cpu"
-  
+
+# TODO : not implemented  
+greyscale: False
 
 save: True
 model_path: stored_models

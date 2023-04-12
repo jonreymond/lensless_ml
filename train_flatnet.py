@@ -1,6 +1,6 @@
 import setGPU
 import hydra
-from dataset import FlatnetDataGenerator
+from dataset import PhlatnetDataGenerator
 
 
 from models.flatnet.discriminator import *
@@ -33,7 +33,23 @@ from datetime import datetime
 
 @hydra.main(version_base=None, config_path="configs", config_name="flatnet_reconstruction")
 def main(config):
-    
+    # conf = tf.compat.v1.ConfigProto()
+    # conf.gpu_options.allow_growth = True
+    # sess = tf.compat.v1.Session(config=conf)
+    # sess.as_default()
+
+
+
+
+    physical_devices = tf.config.list_physical_devices('GPU')
+    try:
+        for device in physical_devices:
+            tf.config.experimental.set_memory_growth(device, True)
+        print('allow memory grow')
+    except:
+        # Invalid device or cannot modify virtual devices once initialized.
+        pass
+
     now = datetime.now()
 
     dataset_config = config['dataset']
@@ -46,8 +62,14 @@ def main(config):
                                                   random_state=config['seed'])
     
     # Data Generators
-    train_generator = FlatnetDataGenerator(dataset_config, train_indexes, config['batch_size'], config['seed'])
-    val_generator = FlatnetDataGenerator(dataset_config,  val_indexes, config['batch_size'], config['seed'])
+    train_generator = PhlatnetDataGenerator(dataset_config=dataset_config, 
+                                           indexes=train_indexes, 
+                                           batch_size=config['batch_size'], 
+                                           seed=config['seed'])
+    val_generator = PhlatnetDataGenerator(dataset_config=dataset_config,  
+                                         indexes=val_indexes, 
+                                         batch_size=config['batch_size'], 
+                                         seed=config['seed'])
 
 
     lpips_loss = get_lpips_loss(config)
@@ -56,28 +78,38 @@ def main(config):
     alpha_mse = K.variable(1.0)
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-02)
-
-
-    discriminator = get_discriminator(get_shape(dataset_config, measure=False))
-
-    input_shape = get_shape(dataset_config, measure=True)  
-    output_shape = get_shape(dataset_config, measure=False)                 
-
-
-    inversion_model = get_inversion_model(config, input_shape)
-
-    model = FlatNetGAN(discriminator, inversion_model)
-
-
-    # TODO : put flatnet args instead = lpips:1.6, mse=1
-    model.compile(d_optimizer='adam',
-                  g_optimizer='adam',
-                  g_perceptual_loss=lpips_loss,
-                  adv_weight=1,
-                  mse_weight=1,
-                  perc_weight=1)
     
-    model.build(Input(shape=input_shape).shape)
+    ### SIMPLE FLATNET ###
+    input_shape = get_shape(dataset_config, measure=True) 
+    model = get_inversion_model(config, input_shape)
+    mse_loss = MeanSquaredError()
+    loss = LossCombiner([lpips_loss, mse_loss], [alpha_lpips, alpha_mse], name='loss_combination')
+    model.compile(optimizer = optimizer, 
+                  loss = mse_loss,
+                  metrics = [MeanSquaredError(name='mse')])
+
+
+    ### GAN FLATNET ####
+    # discriminator = get_discriminator(get_shape(dataset_config, measure=False))
+
+    # input_shape = get_shape(dataset_config, measure=True)  
+    # output_shape = get_shape(dataset_config, measure=False)                 
+
+
+    # inversion_model = get_inversion_model(config, input_shape)
+
+    # model = FlatNetGAN(discriminator, inversion_model)
+
+
+    # # TODO : put flatnet args instead = lpips:1.6, mse=1
+    # model.compile(d_optimizer='adam',
+    #               g_optimizer='adam',
+    #               g_perceptual_loss=lpips_loss,
+    #               adv_weight=1,
+    #               mse_weight=1,
+    #               perc_weight=1)
+    
+    # model.build(Input(shape=input_shape).shape)
         
     print(model.summary())
 

@@ -1,6 +1,6 @@
 import setGPU
 import hydra
-from dataset import DataGenerator
+from dataset import WallerlabGenerator
 from models.unet import u_net
 import numpy as np
 import os
@@ -40,8 +40,16 @@ def main(config):
                                                   random_state=config['seed'])
     
     # Data Generators
-    train_generator = DataGenerator(dataset_config, train_indexes, config['greyscale'], config['batch_size'], config['seed'])
-    val_generator = DataGenerator(dataset_config,  val_indexes, config['greyscale'], config['batch_size'], config['seed'])
+    train_generator = WallerlabGenerator(dataset_config=dataset_config, 
+                                         indexes=train_indexes,
+                                         batch_size=config['batch_size'], 
+                                         greyscale=config['greyscale'], 
+                                         seed=config['seed'])
+    val_generator = WallerlabGenerator(dataset_config,  
+                                       val_indexes, 
+                                       batch_size=config['batch_size'],
+                                       greyscale=config['greyscale'], 
+                                       seed=config['seed'])
 
 
     lpips_loss = get_lpips_loss(config)
@@ -57,6 +65,7 @@ def main(config):
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-02)
 
     model = u_net(get_shape(dataset_config, measure=True, greyscale=config['greyscale']), **config['model'])
+    
 
     # TODO : define best fixed loss weighting for validation // flatnet = lpips:1.6, mse=1
     model.compile(optimizer = optimizer, 

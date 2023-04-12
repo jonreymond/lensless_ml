@@ -5,40 +5,32 @@ import glob
 import cv2
 import tensorflow as tf
 from utils import get_shape, rgb2gray
+from abc import ABC, abstractmethod
 
 
-#######################################################################
-########################## U-net ###################################### 
-#######################################################################
 
-class DataGenerator(keras.utils.Sequence):
+class DataGenerator(ABC, keras.utils.Sequence):
     'Generates data for Keras'
-    def __init__(self, dataset_config, indexes, greyscale=False, batch_size=8, use_crop=False, seed=1):
+    def __init__(self, dataset_config, indexes,  batch_size=8, greyscale=False, seed=1):
         super().__init__()
         'Initialization'
+        self.data_conf = dataset_config
         # extract filenames
-        dir_x = os.path.join(dataset_config['path'], dataset_config['measure_folder'])
-        x_filenames = sorted([name for name in os.listdir(dir_x)])
-
-        dir_y =  os.path.join(dataset_config['path'], dataset_config['truth_folder'])
-        y_filenames = sorted([name for name in os.listdir(dir_y)])
-
-        assert x_filenames == y_filenames, "the lensed filenames must be equal to the lensless filenames"
-
-        x_filenames = np.asarray([os.path.join(dir_x, name) for name in x_filenames])
-        y_filenames = np.asarray([os.path.join(dir_y, name) for name in y_filenames])
+        x_filenames, y_filenames = self._get_filenames()
+        self.x_filenames = x_filenames[indexes]
+        self.y_filenames = y_filenames[indexes]
 
         self.in_dim = get_shape(dataset_config, measure=True, greyscale=greyscale)
         self.out_dim = get_shape(dataset_config, measure=False, greyscale=greyscale)
         self.batch_size = batch_size
-        self.x_filenames = x_filenames[indexes]
-        self.y_filenames = y_filenames[indexes]
+        
         self.num_files = len(indexes)
         self.indexes = np.arange(self.num_files)
         self.seed = seed
         self.greyscale = greyscale
 
         self.on_epoch_end()
+
 
 
     def __len__(self):
@@ -51,58 +43,113 @@ class DataGenerator(keras.utils.Sequence):
         # Generate indexes of the batch
         batch_indexes = self.indexes[index * self.batch_size : (index+1) * self.batch_size]
 
-        X, Y = self.__batch_generation(batch_indexes)
-        return X, Y
-
-
-    def on_epoch_end(self):
-        'Updates indexes after each epoch'
-        np.random.seed(self.seed)
-        np.random.shuffle(self.indexes)
-
-    def __batch_generation(self, batch_indexes):
-        'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
-        # Initialization
         X = np.empty((self.batch_size, *self.in_dim), dtype=np.float32)
         Y = np.empty((self.batch_size, *self.out_dim), dtype=np.float32)
 
         # load data TODO: check if vectorize
         for i, batch_idx in enumerate(batch_indexes):
-            # numpy image: H x W x C
-            X[i,] = rgb2gray(np.load(self.x_filenames[batch_idx])).transpose((2, 0, 1))
-            Y[i,] = rgb2gray(np.load(self.y_filenames[batch_idx])).transpose((2, 0, 1))
+
+            X[i,] = self._get_x(self.x_filenames[batch_idx])
+            Y[i,] = self._get_y(self.y_filenames[batch_idx])
 
         return X, Y
+
+
+    def on_epoch_end(self):
+        'Updates indexes after each epoch by shuffling it'
+        np.random.seed(self.seed)
+        np.random.shuffle(self.indexes)
+
+
+    @abstractmethod
+    def _get_filenames(self):
+        """returns all the path of the measurements and ground truth samples as 2 lists of strings
+        Args: None
+        Returns:
+            (list[str], list[str]): 2 lists of the path_names of all the pairs : 1st list for the measurements,
+                            2nd list for the ground truth, in the same order as the first list to match
+        """
+        pass
+    
+    @abstractmethod
+    def _get_x(self, filename):
+        """returns the preprocessed measurement sample stored at the 'filename' location
+
+        Args:
+            filename (str): file path location to the desired measurement sample
+        Returns:
+            np.array[float] : array of format Channels x measurement_width x measurement_weight, 
+                            where the 'Channel' can be the measurement_channels or 1 if greyscale is True
+        """
+        pass
+    
+    @abstractmethod
+    def _get_y(self, filename):
+        """returns the preprocessed groundtruth sample stored at the 'filename' location
+
+        Args:
+            filename (str): file path location to the desired groundtruth sample
+        Returns:
+            np.array[float] : array of format Channels x groundtruth_width x groundtruth_height, 
+                            where the 'Channel' can be the groundtruth_channels or 1 if greyscale is True
+        """
+        pass
+
+
+
+
+
+###########################################################################
+########################## Wallerlab ###################################### 
+###########################################################################
+
+class WallerlabGenerator(DataGenerator):
+    'Generates data for Keras'
+    def __init__(self, dataset_config, indexes, batch_size=8, greyscale=False, seed=1):
+        super().__init__(dataset_config, indexes, batch_size, greyscale, seed)
+        
+
+    def _get_filenames(self):
+        dir_x = os.path.join(self.data_conf['path'], self.data_conf['measure_folder'])
+        x_filenames = sorted([name for name in os.listdir(dir_x)])
+
+        dir_y =  os.path.join(self.data_conf['path'], self.data_conf['truth_folder'])
+        y_filenames = sorted([name for name in os.listdir(dir_y)])
+
+        assert x_filenames == y_filenames, "the lensed filenames must be equal to the lensless filenames"
+
+        x_filenames = np.asarray([os.path.join(dir_x, name) for name in x_filenames])
+        y_filenames = np.asarray([os.path.join(dir_y, name) for name in y_filenames])
+        return x_filenames, y_filenames
     
 
+    def _get_x(self, filename):
+        x = np.load(filename)
+        if self.greyscale:
+            x = rgb2gray(x)
+        # to channel first
+        return x.transpose((2, 0, 1))
+    
 
+    def _get_y(self, filename):
+        return self._get_x(filename)
+    
 
 #########################################################################
-########################## flatnet ###################################### 
+########################## Phlatnet ##################################### 
 #########################################################################
+
+
 MAX_UINT8_VAL = 2**8 -1
 MAX_UINT16_VAL = 2**16 -1
 
 # TODO: Not for test, see implementation for case test
-class FlatnetDataGenerator(keras.utils.Sequence):
+class PhlatnetDataGenerator(DataGenerator):
     'Generates data for Keras'
-    def __init__(self, dataset_config, indexes, batch_size=8, use_crop=True, gaussian_noise=0, seed=1):
+    def __init__(self, dataset_config, indexes, batch_size=8, seed=1, use_crop=True, gaussian_noise=0):
 
-        super().__init__()
+        super().__init__(dataset_config, indexes, batch_size=8, seed=1)
 
-        self.data_conf = dataset_config
-        # TODO : maybe define split w.r.t the parent folder and not by files
-        x_filenames, y_filenames = self.__get_filenames()
-        # TODO : change after // here 4 channels input for input
-        self.in_dim = get_shape(dataset_config, measure=True)
-        self.out_dim = get_shape(dataset_config, measure=False)
-        self.batch_size = batch_size
-
-        self.x_filenames = x_filenames[indexes]
-        self.y_filenames = y_filenames[indexes]
-        self.num_files = len(indexes)
-        self.indexes = np.arange(self.num_files)
-        self.seed = seed
         self.gaussian_noise = gaussian_noise
         self.crop = use_crop
 
@@ -116,32 +163,13 @@ class FlatnetDataGenerator(keras.utils.Sequence):
             pad_x = (dataset_config['psf']['height'] - dataset_config['crop']['meas_crop_size_x']) // 2
             pad_y = (dataset_config['psf']['width'] - dataset_config['crop']['meas_crop_size_y']) // 2
             self.padding = [(0, 0), (pad_x, pad_x), (pad_y, pad_y)]
-            self.in_dim = self.__get_x(self.x_filenames[0]).shape
+            self.in_dim = self._get_x(self.x_filenames[0]).shape
+            print('in dim: ', self.in_dim)
 
-        self.on_epoch_end()
  
 
 
-    def __len__(self):
-        'Denotes the number of batches per epoch'
-        return int(np.floor(self.num_files / self.batch_size)) 
-
-
-    def __getitem__(self, index):
-        'Generate one batch of data'
-        batch_indexes = self.indexes[index * self.batch_size : (index+1) * self.batch_size]
-
-        X, Y = self.__batch_generation(batch_indexes)
-        return X, Y
-
-
-    def on_epoch_end(self):
-        'Updates indexes after each epoch'
-        np.random.seed(self.seed)
-        np.random.shuffle(self.indexes)
-
-
-    def __get_filenames(self):
+    def _get_filenames(self):
         # if self.data_conf['mode'] == 'test':
         #     raise NotImplementedError
 
@@ -160,24 +188,8 @@ class FlatnetDataGenerator(keras.utils.Sequence):
         return np.asarray(x_filenames), np.asarray(y_filenames)
     
 
-    def __batch_generation(self, batch_indexes):
-        'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
-        # Initialization
-        X = np.empty((self.batch_size, *self.in_dim), dtype=np.float32)
-        Y = np.empty((self.batch_size, *self.out_dim), dtype=np.float32)
 
-        # load data TODO: check if vectorize
-        for i, batch_idx in enumerate(batch_indexes):
-            # numpy image: H x W x C
-            a = self.__get_x(self.x_filenames[batch_idx])
-            b = self.__get_y(self.y_filenames[batch_idx])
-
-            X[i,] = self.__get_x(self.x_filenames[batch_idx])
-            Y[i,] = self.__get_y(self.y_filenames[batch_idx])
-        return X, Y
-
-
-    def __get_y(self, filename):
+    def _get_y(self, filename):
         # read as uint8
         img = cv2.imread(filename)[:, :, ::-1] / MAX_UINT8_VAL
         # TODO : check if width and height in right order
@@ -189,7 +201,7 @@ class FlatnetDataGenerator(keras.utils.Sequence):
         return img.astype(np.float32)
         
 
-    def __get_x(self, filename):
+    def _get_x(self, filename):
         # -1 :return the loaded image as is (with alpha channel, otherwise it gets cropped) 
         # read as uint16
         img = extract_bayer_raw(filename)
@@ -199,9 +211,9 @@ class FlatnetDataGenerator(keras.utils.Sequence):
             # Replicate padding
             img = img[self.crop_x_low : self.crop_x_high,
                       self.crop_y_low : self.crop_y_high,]
+
             img = img.transpose((2, 0, 1))
             img = np.pad(img, self.padding, mode='edge')
-
         else :
             img = img.transpose((2, 0, 1))
 
@@ -211,7 +223,6 @@ class FlatnetDataGenerator(keras.utils.Sequence):
         return img 
 
     
-
 def extract_bayer_raw(filename):
     raw = cv2.imread(filename, -1) / MAX_UINT16_VAL
 

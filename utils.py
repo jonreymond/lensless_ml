@@ -37,6 +37,8 @@ def rgb2gray(rgb, weights=None):
     return np.expand_dims(np.tensordot(rgb, weights, axes=((2,), 0)), -1)
 
 
+
+# TODO : how to use @tf.function with tf and keras same time
 def to_channel_last(x):
     """from NCHW to NHWC format
 
@@ -49,7 +51,6 @@ def to_channel_last(x):
     return tf.keras.layers.Permute([2, 3, 1])(x)
     
     
-
 def to_channel_first(x):
     """from NHWC to NCHW format
 

@@ -25,8 +25,8 @@ truth_height: 384
 truth_width: 384
 truth_channels: 3
 # output of measurement after cropping
-measure_height: 512
-measure_width: 640
+measure_height: 1280
+measure_width: 1408
 # Bayer measurements
 measure_channels: 4
 
