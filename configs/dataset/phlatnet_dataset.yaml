@@ -30,13 +30,26 @@ measure_width: 1408
 # Bayer measurements
 measure_channels: 4
 
+padding: True
+
+
+# crop:
+#   meas_height: 1518 
+#   meas_width: 2012 
+#   meas_crop_size_x: 1280 
+#   meas_crop_size_y: 1408 
+#   meas_centre_x: 808 
+#   meas_centre_y: 965
+  
 
 crop:
-  meas_height: 1518 
-  meas_width: 2012 
-  meas_crop_size_x: 1280 
-  meas_crop_size_y: 1408 
-  meas_centre_x: 808 
-  meas_centre_y: 965
-  
+  # center crop where center_h: 808 and center_w : 965
+  measurements: 
+    low_h: 168 
+    high_h: 1448
+    low_w: 261 
+    high_w: 1669
+    # must match the size involved by the cropping
+    size_h: 1280 
+    size_w: 1408 
 

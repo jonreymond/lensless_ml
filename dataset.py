@@ -152,19 +152,31 @@ class PhlatnetDataGenerator(DataGenerator):
 
         self.gaussian_noise = gaussian_noise
         self.crop = use_crop
+        self.use_padding = dataset_config['padding']
 
         if use_crop:
-            self.crop_x_low = dataset_config['crop']['meas_centre_x'] - dataset_config['crop']['meas_crop_size_x'] // 2
-            self.crop_x_high = self.crop_x_low + dataset_config['crop']['meas_crop_size_x']
-            
-            self.crop_y_low = dataset_config['crop']['meas_centre_y'] - dataset_config['crop']['meas_crop_size_y'] // 2
-            self.crop_y_high = self.crop_y_low + dataset_config['crop']['meas_crop_size_y']
-            
-            pad_x = (dataset_config['psf']['height'] - dataset_config['crop']['meas_crop_size_x']) // 2
-            pad_y = (dataset_config['psf']['width'] - dataset_config['crop']['meas_crop_size_y']) // 2
-            self.padding = [(0, 0), (pad_x, pad_x), (pad_y, pad_y)]
-            self.in_dim = self._get_x(self.x_filenames[0]).shape
-            print('in dim: ', self.in_dim)
+                # ts: 
+        # low_h: 168 
+        # high_h: 1448
+        # low_w: 261 
+        # high_w: 1669
+        # # must match the size involved by the cropping
+        # size_h: 1280 
+        # size_w: 1408 
+            self.crop_config_x = dataset_config['crop']['measurements']
+            size_h = self.crop_config_x['high_h'] - self.crop_config_x['low_h']
+            size_w = self.crop_config_x['high_w'] - self.crop_config_x['low_w']
+
+            assert size_h == self.crop_config_x['size_h'], 'not same height size from cropping and declared, got ' +str(size_h)+' instead of ' +str(self.crop_config_x['size_h'])
+            assert size_w == self.crop_config_x['size_w'], 'not same width size from cropping and declared, got ' +str(size_w)+' instead of ' +str(self.crop_config_x['size_w']) 
+
+        if self.use_padding:
+            pad_x = (dataset_config['psf']['height'] - self.crop_config_x['size_h']) // 2
+            pad_y = (dataset_config['psf']['width'] - self.crop_config_x['size_w']) // 2
+            self.padding = [(pad_x, pad_x), (pad_y, pad_y), (0, 0)]
+
+        self.in_dim = self._get_x(self.x_filenames[0]).shape
+        print('in dim: ', self.in_dim)
 
  
 
@@ -203,19 +215,19 @@ class PhlatnetDataGenerator(DataGenerator):
 
     def _get_x(self, filename):
         # -1 :return the loaded image as is (with alpha channel, otherwise it gets cropped) 
-        # read as uint16
+        # read as uint16, channel last
         img = extract_bayer_raw(filename)
 
-        # TODO : try to understand + check if correct since img 4 dim
+
         if self.crop:
             # Replicate padding
-            img = img[self.crop_x_low : self.crop_x_high,
-                      self.crop_y_low : self.crop_y_high,]
+            img = img[self.crop_config_x['low_h'] : self.crop_config_x['high_h'],
+                      self.crop_config_x['low_w'] : self.crop_config_x['high_w'],:]
 
-            img = img.transpose((2, 0, 1))
+        if self.use_padding:
             img = np.pad(img, self.padding, mode='edge')
-        else :
-            img = img.transpose((2, 0, 1))
+
+        img = img.transpose((2, 0, 1))
 
         # Change range to [-1, 1] range
         img = (img - 0.5) * 2
@@ -237,3 +249,107 @@ def extract_bayer_raw(filename):
     # im1=skimage.transform.warp(im1,tform)
     return img
         
+
+
+#########################################################################
+########################### Flatnet ##################################### 
+#########################################################################
+
+
+# MAX_UINT8_VAL = 2**8 -1
+# MAX_UINT16_VAL = 2**16 -1
+
+# # TODO: Not for test, see implementation for case test
+# class FlatnetDataGenerator(DataGenerator):
+#     'Generates data for Keras'
+#     def __init__(self, dataset_config, indexes, batch_size=8, seed=1, use_crop=True, gaussian_noise=0):
+
+#         super().__init__(dataset_config, indexes, batch_size=8, seed=1)
+
+#         self.gaussian_noise = gaussian_noise
+#         self.crop = use_crop
+#         # CHECK if same
+#         if use_crop:
+#             self.crop_x_low = dataset_config['crop']['meas_centre_x'] - dataset_config['crop']['meas_crop_size_x'] // 2
+#             self.crop_x_high = self.crop_x_low + dataset_config['crop']['meas_crop_size_x']
+            
+#             self.crop_y_low = dataset_config['crop']['meas_centre_y'] - dataset_config['crop']['meas_crop_size_y'] // 2
+#             self.crop_y_high = self.crop_y_low + dataset_config['crop']['meas_crop_size_y']
+            
+#             pad_x = (dataset_config['psf']['height'] - dataset_config['crop']['meas_crop_size_x']) // 2
+#             pad_y = (dataset_config['psf']['width'] - dataset_config['crop']['meas_crop_size_y']) // 2
+#             self.padding = [(0, 0), (pad_x, pad_x), (pad_y, pad_y)]
+#             self.in_dim = self._get_x(self.x_filenames[0]).shape
+#             print('in dim: ', self.in_dim)
+
+ 
+
+#     # Done : SAME
+#     def _get_filenames(self):
+#         # if self.data_conf['mode'] == 'test':
+#         #     raise NotImplementedError
+
+#         dir_x = os.path.join(self.data_conf['path'], self.data_conf['measure_folder'])
+#         dir_y = os.path.join(self.data_conf['path'], self.data_conf['truth_folder'])
+
+#         x_filenames = sorted(glob.glob(dir_x + '/*/*'), key=lambda f: os.path.basename(f).replace('.png','').replace('.', ''))
+#         y_filenames = sorted(glob.glob(dir_y + '/*/*'), key=lambda f: os.path.basename(f).replace('.JPEG',''))
+        
+#         x_names = [os.path.basename(f).replace('.png','').replace('.', '') for f in x_filenames]
+#         y_names = [os.path.basename(f).replace('.JPEG','') for f in y_filenames]
+
+
+#         assert x_names == y_names, 'some of the samples do not match : list(groundtruths) != list(measurements)'
+
+#         return np.asarray(x_filenames), np.asarray(y_filenames)
+    
+
+
+#     def _get_y(self, filename):
+#         # read as uint8
+#         # check if really uint8
+#         img = cv2.imread(filename)[:, :, ::-1] / MAX_UINT8_VAL
+#         # TODO : check if width and height in right order
+#         img = cv2.resize(img, (self.data_conf['truth_width'], self.data_conf['truth_height']))
+
+#          # Change range to [-1, 1] range
+#         img = (img - 0.5) * 2
+#         img = np.transpose(img, (2, 0, 1))
+#         return img.astype(np.float32)
+        
+
+#     def _get_x(self, filename):
+#         # -1 :return the loaded image as is (with alpha channel, otherwise it gets cropped) 
+#         # read as uint16
+#         img = extract_bayer_raw(filename)
+
+#         # TODO : try to understand + check if correct since img 4 dim
+#         if self.crop:
+#             # Replicate padding
+#             img = img[self.crop_x_low : self.crop_x_high,
+#                       self.crop_y_low : self.crop_y_high,]
+
+#             img = img.transpose((2, 0, 1))
+#             img = np.pad(img, self.padding, mode='edge')
+#         else :
+#             img = img.transpose((2, 0, 1))
+
+#         # Change range to [-1, 1] range
+#         img = (img - 0.5) * 2
+#         img += np.random.normal(size=img.shape, scale=self.gaussian_noise)
+#         return img 
+
+    
+# def extract_bayer_raw(filename):
+#     raw = cv2.imread(filename, -1) / MAX_UINT16_VAL
+
+#     raw_h, raw_w = raw.shape
+#     img = np.zeros((raw_h // 2, raw_w // 2, 4), dtype=np.float32)
+
+#     img[:, :, 0] = raw[0::2, 0::2]  # r
+#     img[:, :, 1] = raw[0::2, 1::2]  # gr
+#     img[:, :, 2] = raw[1::2, 0::2]  # gb
+#     img[:, :, 3] = raw[1::2, 1::2]  # b
+#     # tform = skimage.transform.SimilarityTransform(rotation=0.00174)
+#     # im1=skimage.transform.warp(im1,tform)
+#     return img

@@ -10,20 +10,20 @@ len: 10000
 
 mask_path : 'TODO'
 
-psf:
-  path: "TODO"
-  height: 1280 
-  width: 1408
-  crop_size_x: 1280 
-  crop_size_y: 1408 
-  centre_x: 808
-  centre_y: 965
+# psf:
+#   path: "TODO"
+#   height: 1280 
+#   width: 1408
+#   crop_size_x: 1280 
+#   crop_size_y: 1408 
+#   centre_x: 808
+#   centre_y: 965
 
-raw_truth_height: 344
-raw_truth_width: 379
+# raw_truth_height: 344
+# raw_truth_width: 379
 # For resizing w.r.t the FoV of the prototype
-truth_height: 384
-truth_width: 384
+truth_height: 256
+truth_width: 256
 truth_channels: 3
 
 measure_height: 512
@@ -31,13 +31,16 @@ measure_width: 640
 # Bayer measurements
 measure_channels: 4
 
+padding: False
 # meas = measure
 crop:
-  meas_height: 1518 
-  meas_width: 2012 
-  meas_crop_size_x: 1280 
-  meas_crop_size_y: 1408 
-  meas_centre_x: 808 
-  meas_centre_y: 965
+  measurements:
+    low_h: 6 
+    high_h: 506
+    low_w: 10 
+    high_w: 630
+    size_h: 500 
+    size_w: 620 
+
   
 
