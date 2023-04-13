@@ -147,7 +147,7 @@ class LossCombiner(Loss):
         self.losses = losses
 
     def call(self, y_true, y_pred):
-        return sum([weight * loss(y_true, y_pred) for weight, loss in zip(self.loss_weights, self.losses)])
+        return tf.math.reduce_sum([weight * loss(y_true, y_pred) for weight, loss in zip(self.loss_weights, self.losses)])
 
 
 class LossNamer(Loss):

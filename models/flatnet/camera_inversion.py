@@ -250,7 +250,6 @@ class FTLayer(tf.keras.layers.Layer):
 
 def get_inversion_model(config, input_shape):
     
-
     input = Input(shape=input_shape)
 
     psf_cropped = get_psf_cropped(config['dataset']['psf'])

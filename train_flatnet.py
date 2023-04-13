@@ -39,16 +39,14 @@ def main(config):
     # sess.as_default()
 
 
-
-
-    physical_devices = tf.config.list_physical_devices('GPU')
-    try:
-        for device in physical_devices:
-            tf.config.experimental.set_memory_growth(device, True)
-        print('allow memory grow')
-    except:
-        # Invalid device or cannot modify virtual devices once initialized.
-        pass
+    # physical_devices = tf.config.list_physical_devices('GPU')
+    # try:
+    #     for device in physical_devices:
+    #         tf.config.experimental.set_memory_growth(device, True)
+    #     print('allow memory grow')
+    # except:
+    #     # Invalid device or cannot modify virtual devices once initialized.
+    #     pass
 
     now = datetime.now()
 
@@ -77,39 +75,43 @@ def main(config):
     alpha_lpips = K.variable(1.0)
     alpha_mse = K.variable(1.0)
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-02)
+
     
-    ### SIMPLE FLATNET ###
-    input_shape = get_shape(dataset_config, measure=True) 
-    model = get_inversion_model(config, input_shape)
-    mse_loss = MeanSquaredError()
-    loss = LossCombiner([lpips_loss, mse_loss], [alpha_lpips, alpha_mse], name='loss_combination')
-    model.compile(optimizer = optimizer, 
-                  loss = mse_loss,
-                  metrics = [MeanSquaredError(name='mse')])
+    ### SIMPLE FLATNET without discriminator ###
+    # optimizer = tf.keras.optimizers.Adam(learning_rate=1e-02)
+    # input_shape = get_shape(dataset_config, measure=True) 
+    # model = get_inversion_model(config, input_shape)
+    # mse_loss = MeanSquaredError()
+    # loss = LossCombiner([lpips_loss, mse_loss], [alpha_lpips, alpha_mse], name='loss_combination')
+    # model.compile(optimizer = optimizer, 
+    #               loss = mse_loss,
+    #               metrics = [MeanSquaredError(name='mse')])
 
 
     ### GAN FLATNET ####
-    # discriminator = get_discriminator(get_shape(dataset_config, measure=False))
+    discriminator = get_discriminator(get_shape(dataset_config, measure=False))
 
-    # input_shape = get_shape(dataset_config, measure=True)  
-    # output_shape = get_shape(dataset_config, measure=False)                 
+    input_shape = get_shape(dataset_config, measure=True)  
+    output_shape = get_shape(dataset_config, measure=False)                 
 
+    inversion_model = get_inversion_model(config, input_shape)
 
-    # inversion_model = get_inversion_model(config, input_shape)
+    model = FlatNetGAN(discriminator, inversion_model)
 
-    # model = FlatNetGAN(discriminator, inversion_model)
-
-
-    # # TODO : put flatnet args instead = lpips:1.6, mse=1
-    # model.compile(d_optimizer='adam',
-    #               g_optimizer='adam',
-    #               g_perceptual_loss=lpips_loss,
-    #               adv_weight=1,
-    #               mse_weight=1,
-    #               perc_weight=1)
+    # TODO : put flatnet args instead = lpips:1.6, mse=1
+    d_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-03)
+    g_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-03)
+    model.compile(d_optimizer=d_optimizer,
+                  g_optimizer=g_optimizer,
+                  g_perceptual_loss=lpips_loss,
+                  adv_weight=1,
+                  mse_weight=1,
+                  perc_weight=1,
+                  metrics=[MeanSquaredError(name='mse'), 
+                            lpips_loss, 
+                            LossCombiner([lpips_loss, MeanSquaredError(name='mse')], [1, 1], name='total')])
     
-    # model.build(Input(shape=input_shape).shape)
+    model.build(Input(shape=input_shape).shape)
         
     print(model.summary())
 
@@ -124,7 +126,7 @@ def main(config):
                                             save_best_only=True,
                                             save_freq="epoch",
                                             verbose=1)
-    
+
     reduce_lr = ReduceLROnPlateau(monitor='val_total', factor=0.1, patience=3, min_lr=6e-08, verbose=1)
     
     callbacks = [ChangeLossWeights(alpha_plus=alpha_lpips, alpha_minus=alpha_mse, factor=0.1), model_checkpoint, reduce_lr]
