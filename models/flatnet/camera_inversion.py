@@ -12,6 +12,7 @@ from models.unet import u_net
 
 from utils import *
 from omegaconf import OmegaConf
+import scipy
 
 
 
@@ -28,16 +29,19 @@ class SeparableLayer(tf.keras.layers.Layer):
         TODO
     """
     def __init__(self, W1_init, W2_init):
+        super(SeparableLayer, self).__init__()
         self.W1 = tf.Variable(W1_init)
         self.W2 = tf.Variable(W2_init)
         self.activation = tf.keras.layers.LeakyReLU(alpha=0.2)
 
 
     def build(self, input_shape):
-        self.input_shape = input_shape
-        b, h, w, c = input_shape
-        assert h == self.W1.shape[2], "W1 width must be equal to the input height, got " + str(self.W1.shape[2]) + " and " +str(h)
-        assert w == self.W1.shape[1], "W1 height must be equal to the input width, got " + str(self.W1.shape[1]) + " and " +str(w)
+        self.in_shape = input_shape
+        b, c, h, w = self.in_shape
+        print(self.W1.shape)
+        print(self.W2.shape)
+        assert h == self.W1.shape[1], f"W1 width must be equal to the input height, got {self.W1.shape[1]} and {h}"
+        assert w == self.W2.shape[0], f"W1 height must be equal to the input width, got , got {self.W2.shape[0]} and {w}"
 
 
     def call(self, x):
@@ -252,10 +256,24 @@ def get_inversion_model(config, input_shape):
     
     input = Input(shape=input_shape)
 
-    psf_cropped = get_psf_cropped(config['dataset']['psf'])
-    mask = np.load(config['dataset']['mask_path'], np.float32) if config['use_mask'] else None
-    x = FTLayer(config, psf_cropped=psf_cropped, mask=mask)(input)
-    # output = tf.repeat(tf.expand_dims(tf.math.reduce_sum(x, axis=1), 1), repeats=3, axis=1)
+    
+    if config['dataset']['type_mask'] == 'separable':
+        d = scipy.io.loadmat(config['dataset']['calibrated_path'])
+        phi_l = np.zeros((500, 256))
+        phi_r = np.zeros((620, 256))
+        phi_l[:,:] = d['P1gb']
+        phi_r[:,:] = d['Q1gb']
+        phi_l = phi_l.astype('float32')
+        phi_r = phi_r.astype('float32') 
+        x = SeparableLayer(phi_l.T, phi_r)(input)
+        
+    else :
+        psf_cropped = get_psf_cropped(config['dataset']['psf'])
+        mask = np.load(config['dataset']['mask_path'], np.float32) if config['use_mask'] else None
+        x = FTLayer(config, psf_cropped=psf_cropped, mask=mask)(input)
+        # output = tf.repeat(tf.expand_dims(tf.math.reduce_sum(x, axis=1), 1), repeats=3, axis=1)
+
+
     print('before unet', x.shape[1:])
     enhancer_model = u_net(x.shape[1:], **config['model']['enhancer']['unet32'])
     output = enhancer_model(x)

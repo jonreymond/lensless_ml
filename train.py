@@ -72,7 +72,7 @@ def main(config):
                   loss = loss,
                   metrics = [MeanSquaredError(name='mse'), 
                              lpips_loss, 
-                             LossCombiner([lpips_loss, mse_loss], [1, 1], name='total')])
+                             LossCombiner([lpips_loss, mse_loss], [1.2, 1], name='total')])
 
     print(model.summary())
 
@@ -88,7 +88,7 @@ def main(config):
                                             save_freq="epoch",
                                             verbose=1)
     
-    reduce_lr = ReduceLROnPlateau(monitor='val_total', factor=0.1, patience=3, min_lr=6e-08, verbose=1)
+    reduce_lr = ReduceLROnPlateau(monitor='val_total', factor=0.5, patience=3, min_lr=6e-08, verbose=1)
     
     callbacks = [ChangeLossWeights(alpha_plus=alpha_lpips, alpha_minus=alpha_mse, factor=0.1), model_checkpoint, reduce_lr]
 

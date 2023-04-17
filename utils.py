@@ -170,4 +170,7 @@ def extract_bayer(arr):
     # tform = skimage.transform.SimilarityTransform(rotation=0.00174)
     # im1=skimage.transform.warp(im1,tform)
     return img
+
+
+
         

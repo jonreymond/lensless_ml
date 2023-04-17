@@ -10,6 +10,11 @@ len: 10000
 
 mask_path : 'TODO'
 
+calibrated_path: '/scratch/bezzam/ICCV-2019-FlatNet-Dataset/Initialization matrices/flatcam_prototype2_calibdata.mat'
+random_toeplitz_path: 
+  phi_l: '/scratch/bezzam/ICCV-2019-FlatNet-Dataset/Initialization matrices/phil_toep_slope22.mat'
+  phi_r: '/scratch/bezzam/ICCV-2019-FlatNet-Dataset/Initialization matrices/phir_toep_slope22.mat'
+
 # psf:
 #   path: "TODO"
 #   height: 1280 
@@ -26,10 +31,19 @@ truth_height: 256
 truth_width: 256
 truth_channels: 3
 
-measure_height: 512
-measure_width: 640
+raw_measure_height: 512
+raw_measure_width: 640
+# after cropping
+measure_height: 500
+measure_width: 620
+
 # Bayer measurements
 measure_channels: 4
+
+rotate_measurements: True
+
+
+type_mask: "separable"
 
 padding: False
 # meas = measure

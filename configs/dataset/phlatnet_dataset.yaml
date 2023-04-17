@@ -32,16 +32,9 @@ measure_channels: 4
 
 padding: True
 
-
-# crop:
-#   meas_height: 1518 
-#   meas_width: 2012 
-#   meas_crop_size_x: 1280 
-#   meas_crop_size_y: 1408 
-#   meas_centre_x: 808 
-#   meas_centre_y: 965
+type_mask: "non_separable"
   
-
+rotate_measurements: False
 crop:
   # center crop where center_h: 808 and center_w : 965
   measurements: 
