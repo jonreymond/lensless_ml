@@ -19,6 +19,7 @@ class DataGenerator(ABC, keras.utils.Sequence):
         # extract filenames
         x_filenames, y_filenames = self._get_filenames()
 
+
         self.x_filenames = x_filenames[indexes]
         self.y_filenames = y_filenames[indexes]
 
@@ -48,6 +49,7 @@ class DataGenerator(ABC, keras.utils.Sequence):
         X = np.empty((self.batch_size, *self.in_dim), dtype=np.float32)
         Y = np.empty((self.batch_size, *self.out_dim), dtype=np.float32)
 
+
         # load data TODO: check if vectorize
         for i, batch_idx in enumerate(batch_indexes):
 
@@ -59,27 +61,31 @@ class DataGenerator(ABC, keras.utils.Sequence):
 
     def on_epoch_end(self):
         'Updates indexes after each epoch by shuffling it'
+        self.seed += 1
         np.random.seed(self.seed)
         np.random.shuffle(self.indexes)
 
 
-    def get_random_samples(self, num_samples):
-        """Return num_samples random pairs
+    def get_samples(self, num_samples, shuffle=True):
+        """Return num_samples pairs
 
         Args:
             num_samples (int): number of samples desired
 
         Returns:
-            _type_: _description_
+            (numpy array, numpy array): pair of samples
         """
         indexes = np.arange(self.num_files)
-        np.random.seed(self.seed)
+        if shuffle:
+            np.random.seed(self.seed)
+            np.random.shuffle(indexes)
         sample_indexes = indexes[:num_samples]
 
         X = np.empty((num_samples, *self.in_dim), dtype=np.float32)
         Y = np.empty((num_samples, *self.out_dim), dtype=np.float32)
 
         for i, batch_idx in enumerate(sample_indexes):
+            print(self.x_filenames[batch_idx])
             X[i,] = self._get_x(self.x_filenames[batch_idx])
             Y[i,] = self._get_y(self.y_filenames[batch_idx])
 
@@ -167,16 +173,23 @@ class DataGenerator(ABC, keras.utils.Sequence):
 
 class WallerlabGenerator(DataGenerator):
     'Generates data for Keras'
-    def __init__(self, dataset_config, indexes, batch_size=8, greyscale=False, seed=1):
+    def __init__(self, dataset_config, indexes, batch_size=8, greyscale=False, use_crop=True, seed=1):
         super().__init__(dataset_config, indexes, batch_size, greyscale, seed)
+        self.crop = dataset_config['crop']['measurements'] if use_crop else None
         
 
     def _get_filenames(self):
         dir_x = os.path.join(self.data_conf['path'], self.data_conf['measure_folder'])
-        x_filenames = sorted([name for name in os.listdir(dir_x)])
+        x_filenames = sorted([name for name in os.listdir(dir_x) 
+                             if name.endswith(self.data_conf['measure_format'])])
 
         dir_y =  os.path.join(self.data_conf['path'], self.data_conf['truth_folder'])
-        y_filenames = sorted([name for name in os.listdir(dir_y)])
+        y_filenames = sorted([name for name in os.listdir(dir_y)
+                              if name.endswith(self.data_conf['truth_format'])])
+
+        # print(len(x_filenames), len(y_filenames))
+        # s_y, s_x = set(y_filenames), set(x_filenames)
+        # print(s_y.symmetric_difference(s_x))
 
         assert x_filenames == y_filenames, "the lensed filenames must be equal to the lensless filenames"
 
@@ -194,7 +207,12 @@ class WallerlabGenerator(DataGenerator):
     
 
     def _get_y(self, filename):
-        return self._get_x(filename)
+        y = self._get_x(filename)
+
+        if self.crop:
+            y = y[:, self.crop['low_h']: self.crop['high_h'],
+                  self.crop['low_w']: self.crop['high_w']]
+        return y
     
 
     def to_plottable_measurement(self, x):
@@ -276,7 +294,7 @@ class PhlatnetDataGenerator(DataGenerator):
     def _get_y(self, filename):
         # read as uint8
         img = cv2.imread(filename)[:, :, ::-1] / MAX_UINT8_VAL
-        # TODO : check if width and height in right order
+        # cv2 : in (width, height) format
         img = cv2.resize(img, (self.data_conf['truth_width'], self.data_conf['truth_height']))
 
          # Change range to [-1, 1] range
@@ -301,14 +319,23 @@ class PhlatnetDataGenerator(DataGenerator):
         if self.use_padding:
             img = np.pad(img, self.padding, mode='edge')
 
-        
-
         img = img.transpose((2, 0, 1))
 
         # Change range to [-1, 1] range
         img = (img - 0.5) * 2
         img += np.random.normal(size=img.shape, scale=self.gaussian_noise)
         return img 
+    
+    def to_plottable_measurement(self, x):
+        x = x/2 + 1
+        red = x[0]
+        green = (x[1] + x[2]) /2.0
+        blue = x[3]
+        return np.asarray((red, green, blue)).transpose((1, 2, 0))
+        
+
+    def to_plottable_output(self, y):
+        return y.transpose((1 ,2, 0))
 
     
 def extract_bayer_raw(filename):

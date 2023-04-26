@@ -10,6 +10,9 @@ from keras.losses import Loss
 import yaml
 import numpy as np
 import cv2
+from keras.losses import MeanSquaredError
+
+from multiprocessing import Process, Queue, shared_memory, managers
 
 
 
@@ -84,7 +87,7 @@ def get_config_from_yaml(path):
     return config
 
 
-def get_lpips_loss(config):
+def get_lpips_loss(config, lpips_model):
 
     if not os.path.isdir('lpips_losses'):
         os.makedirs('lpips_losses')
@@ -95,12 +98,12 @@ def get_lpips_loss(config):
         shape_str = ''
         for s in shape:
             shape_str += '_' + str(s)
-        return 'lpips_' + config['lpips_model'] + '_shape' + shape_str
+        return 'lpips_' + lpips_model + '_shape' + shape_str
     
     lpips_path = os.path.join('lpips_losses', get_lpips_name())
 
     if not os.path.isfile(lpips_path + '.pb'):
-        lpips_loss = LPIPS(net=config['lpips_model']).cuda()
+        lpips_loss = LPIPS(net=lpips_model).cuda()
         #change to satisfy with torch order : first channels
         sample_input = (torch.randn(config['batch_size'], *shape, requires_grad=False).cuda(),
                         torch.randn(config['batch_size'], *shape, requires_grad=False).cuda())
@@ -109,29 +112,28 @@ def get_lpips_loss(config):
     stored_lpips = tf.keras.models.load_model(lpips_path + '.pb')
     
 
-    if config['use_crop']:
-        lpips = lambda x, y : tf.reduce_mean(stored_lpips(input1=x, 
-                                                          input2=y
-                                                          )['output'])
-    else :
-        lpips = lambda x, y : tf.reduce_mean(stored_lpips(input1=(x * 2 - 1), input2=(y * 2 - 1))['output'])
+    # if config['use_crop']:
+    #     lpips = lambda x, y : tf.reduce_mean(stored_lpips(input1=x, 
+    #                                                       input2=y
+    #                                                       )['output'])
+    # else :
+    lpips = lambda x, y : tf.reduce_mean(stored_lpips(input1=(x * 2 - 1), input2=(y * 2 - 1))['output'])
     
     return LossNamer(lpips, 'lpips')
 
 
 
 class ChangeLossWeights(tf.keras.callbacks.Callback):
-    def __init__(self, alpha_minus, alpha_plus, factor):
-        self.alpha_minus =alpha_minus
-        self.alpha_plus = alpha_plus
-        self.fact = factor
+    def __init__(self, weights_factors):
+        self.weights_factors = weights_factors
 
     def on_epoch_end(self, epoch, logs=None):
-        if (self.alpha_minus - self.fact) < 0:
-            print('\nno weight update, current minus value :', self.alpha_minus.numpy())
-        else:
-            K.set_value(self.alpha_plus, self.alpha_plus + self.fact)
-            K.set_value(self.alpha_minus, self.alpha_minus - self.fact)
+        for weight, additive_factor in self.weights_factors:
+            if weight + additive_factor < 0 :
+                print('\nno weight update, current minus value :', weight)
+            else:
+                K.set_value(weight, weight + additive_factor)
+
         
 
 # TODO : transform to support dict
@@ -159,6 +161,18 @@ class LossNamer(Loss):
         return self.loss(y_true, y_pred)
 
 
+class MSEChannelFirst(Loss):
+    def __init__(self, name='mse'):
+        super().__init__(name=name)
+
+    def call(self, y_true, y_pred):
+        y_pred = tf.convert_to_tensor(y_pred)
+        y_true = tf.cast(y_true, y_pred.dtype)
+        return K.mean(tf.math.squared_difference(y_pred, y_true), axis=1)
+
+
+
+
 def extract_bayer(arr):
     raw_h, raw_w = arr.shape
     img = np.zeros((raw_h // 2, raw_w // 2, 4), dtype=np.float32)
@@ -171,6 +185,81 @@ def extract_bayer(arr):
     # im1=skimage.transform.warp(im1,tform)
     return img
 
+def get_loss_from_name(name_id, loss_config, config=None):
+    if name_id == 'mse':
+        return MeanSquaredError(name='mse')
+    elif name_id == 'lpips':
+        return get_lpips_loss(config, loss_config['model'])
+    else:
+        raise NotImplementedError('loss not implemented')
 
 
-        
+
+
+
+
+class ShmArray(np.ndarray):
+
+    def __new__(cls, shape, dtype=float, buffer=None, offset=0,
+                strides=None, order=None, shm=None):
+        obj = super(ShmArray, cls).__new__(cls, shape, dtype,
+                                           buffer, offset, strides,
+                                           order)
+        obj.shm = shm
+        return obj
+
+    def __array_finalize__(self, obj):
+        if obj is None: return
+        self.shm = getattr(obj, 'shm', None)
+
+
+
+
+
+def shared_mem_multiprocessing(sequence, workers=8, queue_max_size=32):
+
+    class ErasingSharedMemory(shared_memory.SharedMemory):
+
+        def __del__(self):
+            super(ErasingSharedMemory, self).__del__()
+            self.unlink()
+
+    queue = Queue(maxsize=queue_max_size)
+    manager = managers.SharedMemoryManager()
+    manager.start()
+
+    def worker(sequence, idxs):
+        for i in idxs:
+            x, y = sequence[i]
+
+            shm = manager.SharedMemory(size=x.nbytes + y.nbytes)
+            a = np.ndarray(x.shape, dtype=x.dtype, buffer=shm.buf, offset=0)
+            b = np.ndarray(y.shape, dtype=y.dtype, buffer=shm.buf, offset=x.nbytes)
+
+            a[:] = x[:]
+            b[:] = y[:]
+            queue.put((a.shape, a.dtype, b.shape, b.dtype, shm.name))
+            shm.close()
+            del shm
+
+    idxs = np.array_split(np.arange(len(sequence)), workers)
+    args = zip([sequence] * workers, idxs)
+    processes = [Process(target=worker, args=(s, i)) for s, i in args]
+    _ = [p.start() for p in processes]
+
+    try:
+        for i in range(len(sequence)):
+            x_shape, x_dtype, y_shape, y_dtype, shm_name = queue.get(block=True)
+            existing_shm = ErasingSharedMemory(name=shm_name)
+            x = ShmArray(x_shape, dtype=x_dtype, buffer=existing_shm.buf, offset=0, shm=existing_shm)
+            y = ShmArray(y_shape, dtype=y_dtype, buffer=existing_shm.buf, offset=x.nbytes, shm=existing_shm)
+            yield x, y
+            # Memory will be automatically deleted when gc is triggered
+    finally:
+        print("Closing all the processed")
+        _ = [p.terminate() for p in processes]
+        print("Joining all the processed")
+        _ = [p.join() for p in processes]
+        queue.close()
+        manager.shutdown()
+        manager.join()

@@ -70,10 +70,10 @@ def main(config):
                                          seed=config['seed'])
 
 
-    lpips_loss = get_lpips_loss(config)
+    lpips_loss = get_lpips_loss(config, 'vgg')
 
-    alpha_lpips = K.variable(1.0)
-    alpha_mse = K.variable(1.0)
+    # alpha_lpips = K.variable(1.0)
+    # alpha_mse = K.variable(1.0)
 
 
     
@@ -129,10 +129,13 @@ def main(config):
 
     reduce_lr = ReduceLROnPlateau(monitor='val_total', factor=0.5, patience=3, min_lr=6e-08, verbose=1)
     
-    callbacks = [ChangeLossWeights(alpha_plus=alpha_lpips, alpha_minus=alpha_mse, factor=0.1), model_checkpoint, reduce_lr]
+    callbacks = [model_checkpoint, reduce_lr]
 
     if config['use_tensorboard']:
-        tb_callback = tf.keras.callbacks.TensorBoard(os.path.join(config['temp_store_path'], 'logs'), 
+        tb_path = os.path.join(config['tensorboard_path'], str(now.date()), str(now.strftime("%H-%M-%S")), 'logs')
+        if not os.path.isdir(tb_path):
+            os.makedirs(tb_path)
+        tb_callback = tf.keras.callbacks.TensorBoard(tb_path, 
                                                      histogram_freq = 1, 
                                                      update_freq='epoch')
         callbacks.append(tb_callback)

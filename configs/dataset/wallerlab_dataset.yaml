@@ -1,20 +1,34 @@
 name: wallerlab
-path: /scratch/jreymond/unet_subset
+path: /scratch/bezzam/DiffuserCam_mirflickr/dataset
+# psf_path: 
+# path: /scratch/jreymond/unet_subset
 psf_path: data/psf/tape_rgb.png
 
-truth_folder: ground_truth
-measure_folder: diffuser
-len: 7513
-truth_format: numpy
-measure_format: numpy
+truth_folder: ground_truth_lensed
+measure_folder: diffuser_images
+# len: 7513
+len: 24999
+truth_format: npy
+measure_format: npy
 
-truth_height: 270
-truth_width: 480
+# raw_truth_height: 270
+# raw_truth_width: 480
 truth_channels: 3
+#after cropping
+truth_height: 210
+truth_width: 380
 
 measure_height: 270
 measure_width: 480
 measure_channels: 3
 
-crop:
 
+# out_image[60:,62:-38,:]
+crop:
+  measurements:
+    low_h: 0 
+    high_h: 210
+    low_w: 62
+    high_w: 442
+    size_h: 210
+    size_w: 380

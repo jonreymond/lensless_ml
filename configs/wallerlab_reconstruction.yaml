@@ -2,11 +2,13 @@ defaults:
   - dataset: wallerlab_dataset
   - model: wallerlab_unet
 
-  
-batch_size: 8
+workers: 8
+queue_max_size: 32
+
+batch_size: 16
 validation_split: 0.2
-epochs: 100
-lpips_model: alex
+epochs: 120
+
 device_conv: cuda    # "cuda" or "cpu"
   
 greyscale: False
@@ -14,8 +16,54 @@ greyscale: False
 save: True
 model_path: stored_models
 use_tensorboard: True
+tensorboard_path: "tensorboard_results"
+
 temp_store_path: "temp"
 
-use_crop: False
+use_crop: True
 
 seed: 1   # Note : will not result in a deterministic output if use cuda device
+
+
+optimizer:
+  # name of optimizer technique desired
+  identifier: "adam"
+  learning_rate: 0.01
+
+
+loss:
+  mse:
+    weight: 1
+    # either "" or number: additive factor to update the weight of the loss
+    additive_factor: "" #-0.05
+  lpips:
+    # either vgg or alex
+    model: alex
+    weight: 1.6
+    # either "" or number: additive factor to update the weight of the loss
+    additive_factor: "" #0.05
+  
+metric:
+  mse:
+   # static weight: used when computing metric, useful to know global loss to store best model
+    weight: 1
+  lpips:
+    model: alex
+    weight: 1.2
+
+lr_reducer:
+  # either None if no rl_reducer callback, or reduce_lr_on_plateau, or learning_rate_scheduler
+  type: reduce_lr_on_plateau
+
+  reduce_lr_on_plateau:
+    monitor: 'val_total'
+    factor: 0.5
+    patience: 4
+    # 6e-8
+    min_lr: 0.00000006
+    verbose: 1
+
+  learning_rate_scheduler:
+    scheduler: "TODO : define function def scheduler(epoch, lr): returning updated lr"
+    verbose: 1
+

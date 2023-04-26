@@ -61,8 +61,8 @@ def stack_decoder(x, filters, down_tensor, kernel_size=3, bn_eps=1e-3, num_conv=
 
 
 
-def u_net(shape, enc_filters, name='unet', last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3):
-    input = Input(shape=shape, name="input")
+def u_net(in_shape, enc_filters, name='unet', last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3, out_shape=None):
+    input = Input(shape=in_shape, name="input")
     x = input
     ### down: encoder ###
 
@@ -87,9 +87,14 @@ def u_net(shape, enc_filters, name='unet', last_conv_filter=None, num_dec_conv=2
     if last_conv_filter:
         x = conv_block(x, last_conv_filter, kernel_size=3)
     ### "classifier" ###
-    num_outputs = 3 if shape[0] != 1 else 1
+    num_outputs = 3 if in_shape[0] != 1 else 1
 
     x = Conv2D(filters=num_outputs, kernel_size=1, use_bias=True, padding='same')(x)
+
+    if out_shape:
+        x = to_channel_last(x)
+        x = tf.keras.layers.Resizing(height=out_shape[1], width=out_shape[2], interpolation='bilinear')(x)
+        x = to_channel_first(x)
     return Model(inputs=[input], outputs=[x], name=name)
 
  
