@@ -1,6 +1,6 @@
 import setGPU
 import hydra
-from dataset import WallerlabGenerator
+from dataset import get_dataset
 from models.unet import u_net
 import numpy as np
 import os
@@ -31,7 +31,6 @@ def main(config):
     now = datetime.now()
 
     dataset_config = config['dataset']
-
     indexes = np.arange(dataset_config['len'])
 
     train_indexes, val_indexes = train_test_split(indexes, 
@@ -40,18 +39,14 @@ def main(config):
                                                   random_state=config['seed'])
     
     # Data Generators
-    train_generator = WallerlabGenerator(dataset_config=dataset_config, 
-                                         indexes=train_indexes,
-                                         batch_size=config['batch_size'], 
-                                         greyscale=config['greyscale'],
-                                         use_crop=config['use_crop'], 
-                                         seed=config['seed'])
-    val_generator = WallerlabGenerator(dataset_config,  
-                                       val_indexes, 
-                                       batch_size=config['batch_size'],
-                                       greyscale=config['greyscale'],
-                    use_crop=config['use_crop'],  
-                                       seed=config['seed'])
+    data_args = dict(batch_size=config['batch_size'], 
+                    greyscale=config['greyscale'],
+                    use_crop=config['use_crop'], 
+                    seed=config['seed'])
+    
+    train_generator = get_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
+    val_generator = get_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
+
 
     # train_generator = shared_mem_multiprocessing(train_generator, workers=config['workers'], queue_max_size=config['queue_max_size'])
     # val_generator = shared_mem_multiprocessing(val_generator, workers=config['workers'], queue_max_size=config['queue_max_size'])
@@ -111,8 +106,9 @@ def main(config):
                                             save_freq="epoch",
                                             verbose=1)
     
-    
-    callbacks = [ChangeLossWeights(dynamic_weights), model_checkpoint]
+    callbacks = [model_checkpoint]
+    if dynamic_weights:
+        callbacks.append(ChangeLossWeights(dynamic_weights))
 
     if config['lr_reducer']['type']:
         if config['lr_reducer']['type'] == "reduce_lr_on_plateau":
@@ -151,8 +147,8 @@ def main(config):
         store_path = config['model_path'] + '/' + str(now.date())
         if not os.path.isdir(store_path):
             os.makedirs(store_path)
-        # name =  config['model']['name'] + "_" + str(now.strftime("%H-%M-%S")) + '.pb'
-        name =  config['model']['name'] + ".pb"
+        name =  config['model']['name'] + "_" + str(now.strftime("%H-%M-%S")) + '.pb'
+        # name =  config['model']['name'] + ".pb"
         tf.saved_model.save(model, os.path.join(store_path, name))
 
 

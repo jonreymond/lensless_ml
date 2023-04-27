@@ -33,20 +33,6 @@ from datetime import datetime
 
 @hydra.main(version_base=None, config_path="configs", config_name="flatnet_reconstruction")
 def main(config):
-    # conf = tf.compat.v1.ConfigProto()
-    # conf.gpu_options.allow_growth = True
-    # sess = tf.compat.v1.Session(config=conf)
-    # sess.as_default()
-
-
-    # physical_devices = tf.config.list_physical_devices('GPU')
-    # try:
-    #     for device in physical_devices:
-    #         tf.config.experimental.set_memory_growth(device, True)
-    #     print('allow memory grow')
-    # except:
-    #     # Invalid device or cannot modify virtual devices once initialized.
-    #     pass
 
     now = datetime.now()
 
@@ -72,20 +58,6 @@ def main(config):
 
     lpips_loss = get_lpips_loss(config, 'vgg')
 
-    # alpha_lpips = K.variable(1.0)
-    # alpha_mse = K.variable(1.0)
-
-
-    
-    ### SIMPLE FLATNET without discriminator ###
-    # optimizer = tf.keras.optimizers.Adam(learning_rate=1e-02)
-    # input_shape = get_shape(dataset_config, measure=True) 
-    # model = get_inversion_model(config, input_shape)
-    # mse_loss = MeanSquaredError()
-    # loss = LossCombiner([lpips_loss, mse_loss], [alpha_lpips, alpha_mse], name='loss_combination')
-    # model.compile(optimizer = optimizer, 
-    #               loss = mse_loss,
-    #               metrics = [MeanSquaredError(name='mse')])
 
 
     ### GAN FLATNET ####
@@ -99,8 +71,9 @@ def main(config):
     model = FlatNetGAN(discriminator, inversion_model)
 
     # TODO : put flatnet args instead = lpips:1.6, mse=1
-    d_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-03)
-    g_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-03)
+    d_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-04)
+    g_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-04)
+    # TODO : change g_optimizer : must be optimizer for callback
     model.compile(d_optimizer=d_optimizer,
                   g_optimizer=g_optimizer,
                   g_perceptual_loss=lpips_loss,
@@ -109,7 +82,7 @@ def main(config):
                   perc_weight=1.2,
                   metrics=[MeanSquaredError(name='mse'), 
                             lpips_loss, 
-                            LossCombiner([lpips_loss, MeanSquaredError(name='mse')], [1, 1], name='total')])
+                            LossCombiner([lpips_loss, MeanSquaredError(name='mse')], [1.2, 1], name='total')])
     
     model.build(Input(shape=input_shape).shape)
         

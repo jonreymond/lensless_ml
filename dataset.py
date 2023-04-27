@@ -352,3 +352,19 @@ def extract_bayer_raw(filename):
     # im1=skimage.transform.warp(im1,tform)
     return img
         
+
+
+
+
+
+def get_dataset(dataset_id, dataset_config, indexes, args):
+    if dataset_id == 'wallerlab':
+        return WallerlabGenerator(dataset_config=dataset_config,
+                                  indexes=indexes,
+                                  **args)
+    elif dataset_id in['flatnet', 'phlatnet'] :
+        return PhlatnetDataGenerator(dataset_config=dataset_config, 
+                                    indexes=indexes, 
+                                     **args)
+    else:
+        raise NotImplementedError

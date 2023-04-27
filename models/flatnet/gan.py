@@ -30,7 +30,7 @@ class FlatNetGAN(Model):
 
 
     def compile(self, d_optimizer, g_optimizer, g_perceptual_loss, adv_weight, mse_weight, perc_weight, metrics):
-        super(FlatNetGAN, self).compile(metrics=metrics)
+        super(FlatNetGAN, self).compile(metrics=metrics, optimizer=g_optimizer)
         self.d_optimizer = optimizers.get(d_optimizer) if isinstance(d_optimizer, str) else d_optimizer
         self.g_optimizer = optimizers.get(g_optimizer) if isinstance(g_optimizer, str) else g_optimizer
 
@@ -72,7 +72,7 @@ class FlatNetGAN(Model):
         grads = tape.gradient(g_loss_res, self.generator.trainable_weights)
         self.g_optimizer.apply_gradients(zip(grads, self.generator.trainable_weights))
         
-        return {"d": d_loss_res, "g": g_loss_res, "adv": adv_loss, "mse":mse_loss, "perc" : perc_loss}
+        return {"d": d_loss_res, "g": g_loss_res, "adv": adv_loss, "mse":mse_loss, "lpips" : perc_loss}
     
 
 
