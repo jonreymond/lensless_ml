@@ -1,0 +1,23 @@
+#wallerlab
+wallerlab_unet:
+  type: unet
+  bn_eps: 0.0001
+  num_dec_conv: 3
+  enc_filters : [24, 64, 128, 256, 512]
+
+
+#flatnet
+unet32:
+  type: unet
+  enc_filters : [32, 64, 128, 256]
+  last_conv_filter: 12
+
+unet64:
+  type: unet
+  enc_filters : [64, 128, 256, 512]
+  last_conv_filter: 12
+
+unet128:
+  type: unet
+  enc_filters : [128, 256, 512, 1024]
+  last_conv_filter: 12

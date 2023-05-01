@@ -131,7 +131,7 @@ class DataGenerator(ABC, keras.utils.Sequence):
 
 
     @abstractmethod
-    def to_plottable_measurement(x):
+    def to_plottable_measurement(self, x):
         """returns the measurement sample in a format that could be plotted for visualization
 
         Args:
@@ -144,7 +144,7 @@ class DataGenerator(ABC, keras.utils.Sequence):
 
 
     @abstractmethod
-    def to_plottable_output(y):
+    def to_plottable_output(self, y):
         """returns the output or ground_truth sample in a format that could be plotted for visualization
 
         Args:

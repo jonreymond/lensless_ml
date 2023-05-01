@@ -250,13 +250,35 @@ class FTLayer(tf.keras.layers.Layer):
         return x
     
 
-
-
-def get_inversion_model(config, input_shape):
+# def flatnet_reconstruction(config, input_shape):
     
-    input = Input(shape=input_shape)
+#     input = Input(shape=input_shape)
 
-    
+#     if config['dataset']['type_mask'] == 'separable':
+#         d = scipy.io.loadmat(config['dataset']['calibrated_path'])
+#         phi_l = np.zeros((500, 256))
+#         phi_r = np.zeros((620, 256))
+#         phi_l[:,:] = d['P1gb']
+#         phi_r[:,:] = d['Q1gb']
+#         phi_l = phi_l.astype('float32')
+#         phi_r = phi_r.astype('float32') 
+#         x = SeparableLayer(phi_l.T, phi_r)(input)
+        
+#     else :
+#         psf_cropped = get_psf_cropped(config['dataset']['psf'])
+#         mask = np.load(config['dataset']['mask_path'], np.float32) if config['use_mask'] else None
+#         x = FTLayer(config, psf_cropped=psf_cropped, mask=mask)(input)
+#         # output = tf.repeat(tf.expand_dims(tf.math.reduce_sum(x, axis=1), 1), repeats=3, axis=1)
+
+
+#     print('before unet', x.shape[1:])
+#     enhancer_model = u_net(x.shape[1:], **config['model']['enhancer']['unet32'])
+#     output = enhancer_model(x)
+#     return Model(inputs=[input], outputs=[output], name='Generator')
+
+
+# TODO : only work for flatnet yet
+def get_camera_inversion_layer(input, config):
     if config['dataset']['type_mask'] == 'separable':
         d = scipy.io.loadmat(config['dataset']['calibrated_path'])
         phi_l = np.zeros((500, 256))
@@ -271,11 +293,6 @@ def get_inversion_model(config, input_shape):
         psf_cropped = get_psf_cropped(config['dataset']['psf'])
         mask = np.load(config['dataset']['mask_path'], np.float32) if config['use_mask'] else None
         x = FTLayer(config, psf_cropped=psf_cropped, mask=mask)(input)
-        # output = tf.repeat(tf.expand_dims(tf.math.reduce_sum(x, axis=1), 1), repeats=3, axis=1)
+    return x
 
-
-    print('before unet', x.shape[1:])
-    enhancer_model = u_net(x.shape[1:], **config['model']['enhancer']['unet32'])
-    output = enhancer_model(x)
-    return Model(inputs=[input], outputs=[output], name='Generator')
 

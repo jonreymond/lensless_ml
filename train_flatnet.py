@@ -60,6 +60,7 @@ def main(config):
 
 
 
+    
     ### GAN FLATNET ####
     discriminator = get_discriminator(get_shape(dataset_config, measure=False))
 
@@ -74,8 +75,8 @@ def main(config):
     d_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-04)
     g_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-04)
     # TODO : change g_optimizer : must be optimizer for callback
-    model.compile(d_optimizer=d_optimizer,
-                  g_optimizer=g_optimizer,
+    model.compile(optimizer=g_optimizer,
+                  d_optimizer=d_optimizer,
                   g_perceptual_loss=lpips_loss,
                   adv_weight=0.6,
                   mse_weight=1,

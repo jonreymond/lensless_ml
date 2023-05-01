@@ -61,8 +61,7 @@ def stack_decoder(x, filters, down_tensor, kernel_size=3, bn_eps=1e-3, num_conv=
 
 
 
-def u_net(in_shape, enc_filters, name='unet', last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3, out_shape=None):
-    input = Input(shape=in_shape, name="input")
+def u_net(input, enc_filters, name='unet', last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3, out_shape=None):
     x = input
     ### down: encoder ###
 
@@ -87,7 +86,8 @@ def u_net(in_shape, enc_filters, name='unet', last_conv_filter=None, num_dec_con
     if last_conv_filter:
         x = conv_block(x, last_conv_filter, kernel_size=3)
     ### "classifier" ###
-    num_outputs = 3 if in_shape[0] != 1 else 1
+    # TODO : check if input.shape[1] == input_shape[0]
+    num_outputs = 3 if input.shape[1] != 1 else 1
 
     x = Conv2D(filters=num_outputs, kernel_size=1, use_bias=True, padding='same')(x)
 

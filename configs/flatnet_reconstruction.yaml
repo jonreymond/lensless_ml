@@ -1,6 +1,10 @@
 defaults:
   - dataset: flatnet_dataset
-  - model: flatnet_model
+  - model: default_models
+
+use_camera_inversion: True
+#will load specs of unet32 in default_models
+model_name: unet32
 
   
 batch_size: 8

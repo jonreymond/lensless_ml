@@ -6,6 +6,7 @@ import numpy as np
 import os
 import sys
 from sklearn.model_selection import train_test_split
+from models.model_utils import *
 
 import json
 from utils import *
@@ -22,6 +23,52 @@ from torchsummary import summary
 from functools import partial
 from datetime import datetime
 
+from tf_dataset import *
+
+
+def get_metrics(config):
+    """get the metrics from the config
+
+    Args:
+        config (dict): configuration dictionary
+
+    Returns:
+        (list, list): the metrics and their corresponding weights
+    """
+    metrics = []
+    metric_weights = []
+    for metric_id in config['metric'].keys():
+        metric_config = config['metric'][metric_id]
+        metrics.append(get_loss_from_name(metric_id, metric_config, config))
+        metric_weights.append(metric_config['weight'])
+
+    return metrics, metric_weights
+
+
+def get_losses(config):
+    """get the losses from the config
+
+    Args:
+        config (dict): configuration dictionary
+
+    Returns:
+        (list, list, list): the losses and their corresponding weights, and the dynamic weights
+                            that need to be updated during training
+    """
+
+    losses = []
+    weights = []
+    dynamic_weights = []
+    for loss_id in config['loss'].keys():
+        loss_config = config['loss'][loss_id]
+        losses.append(get_loss_from_name(loss_id, loss_config, config))
+        weight = loss_config['weight']
+        # add to list to be updated during callback
+        if loss_config['additive_factor']:
+            weight = K.variable(weight)
+            dynamic_weights.append((weight, loss_config['additive_factor']))
+        weights.append(weight)
+    return losses, weights, dynamic_weights
 
 
 
@@ -44,46 +91,35 @@ def main(config):
                     use_crop=config['use_crop'], 
                     seed=config['seed'])
     
-    train_generator = get_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
-    val_generator = get_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
+    # train_generator = get_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
+    # val_generator = get_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
 
+    train_generator = get_tf_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
+    val_generator = get_tf_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
 
     # train_generator = shared_mem_multiprocessing(train_generator, workers=config['workers'], queue_max_size=config['queue_max_size'])
     # val_generator = shared_mem_multiprocessing(val_generator, workers=config['workers'], queue_max_size=config['queue_max_size'])
 
+    
+
     # losses
-    losses = []
-    weights = []
-    dynamic_weights = []
-    for loss_id in config['loss'].keys():
-        loss_config = config['loss'][loss_id]
-        losses.append(get_loss_from_name(loss_id, loss_config, config))
-        weight = loss_config['weight']
-        # add to list to be updated during callback
-        if loss_config['additive_factor']:
-            weight = K.variable(weight)
-            dynamic_weights.append((weight, loss_config['additive_factor']))
-        weights.append(weight)
+    losses, weights, dynamic_weights = get_losses(config)
+
   
     loss = LossCombiner(losses, weights, name='loss_combination')
 
     # metrics
-    metrics = []
-    metric_weights = []
-    for metric_id in config['metric'].keys():
-
-        metric_config = config['metric'][metric_id]
-
-        metrics.append(get_loss_from_name(metric_id, metric_config, config))
-        metric_weights.append(metric_config['weight'])
+    metrics, metric_weights = get_metrics(config)
 
 
     optimizer = tf.keras.optimizers.get(**config['optimizer'])
 
+    
     in_shape = get_shape(dataset_config, measure=True, greyscale=config['greyscale'])
     out_shape = get_shape(dataset_config, measure=False, greyscale=config['greyscale'])
 
-    model = u_net(in_shape, **config['model'], out_shape=out_shape)
+    model = get_model(config=config, input_shape=in_shape, out_shape=out_shape, model_name='wallerlab_model')
+
     
 
     # TODO : define best fixed loss weighting for validation // flatnet = lpips:1.6, mse=1
@@ -97,6 +133,7 @@ def main(config):
     if not os.path.isdir(config['temp_store_path']):
         os.makedirs(config['temp_store_path'])
     checkpoint_path = os.path.join(config['temp_store_path'], 'checkpoint_' + str(now.strftime("%H-%M-%S")))
+    
     model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
                                             filepath=checkpoint_path,
                                             save_weights_only=True,
@@ -126,6 +163,7 @@ def main(config):
             os.makedirs(tb_path)
         tb_callback = tf.keras.callbacks.TensorBoard(tb_path, 
                                                      histogram_freq = 1, 
+                                                     profile_batch=config['tensorboard_profile_batch'],
                                                      update_freq='epoch')
         callbacks.append(tb_callback)
 

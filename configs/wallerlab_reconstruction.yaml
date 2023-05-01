@@ -1,13 +1,16 @@
 defaults:
   - dataset: wallerlab_dataset
-  - model: wallerlab_unet
+  - model: default_models
 
+use_camera_inversion: False
+#will load specs of wallerlab_unet in default_models
+model_name: wallerlab_unet
 workers: 8
 queue_max_size: 32
 
 batch_size: 16
 validation_split: 0.2
-epochs: 120
+epochs: 5
 
 device_conv: cuda    # "cuda" or "cpu"
   
@@ -17,6 +20,9 @@ save: True
 model_path: stored_models
 use_tensorboard: True
 tensorboard_path: "tensorboard_results"
+# to get the number of batches processed by tensorboard in each epoch for runtime analysis
+# may induce runtime overhead if set too high
+tensorboard_profile_batch: 50
 
 temp_store_path: "temp"
 
