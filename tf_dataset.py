@@ -37,7 +37,8 @@ class DataLoader(ABC):
         data_measure = Dataset.from_tensor_slices(self.x_filenames)
         data_measure = self._map_x(data_measure)
 
-        data_truth = data_measure
+        data_truth = Dataset.from_tensor_slices(self.y_filenames)
+        data_truth = self._map_y(data_truth)
         # .map(lambda item: tf.numpy_function(np.load, [item], tf.float32))
         # load ground truth
         # data_truth = Dataset.from_tensor_slices(self.y_filenames).map(lambda item: tf.numpy_function(
@@ -46,7 +47,9 @@ class DataLoader(ABC):
         # zip together
         data = Dataset.zip((data_measure, data_truth))
         # shuffle
-        data = data.shuffle(buffer_size=self.num_files, seed=self.seed)
+        data = data.shuffle(buffer_size=1000, reshuffle_each_iteration=True, seed=self.seed)
+
+        # data = data.shuffle(buffer_size=self.num_files, seed=self.seed)
         # batch
         data = data.batch(self.batch_size)
         # prefetch
@@ -147,13 +150,19 @@ class DataLoader(ABC):
 
 
 
+
+
+def np_load(filename):
+        return np.load(filename)
+
+
 class WallerlabDaloader(DataLoader):
 
     def __init__(self, dataset_config, indexes, batch_size, greyscale=False, use_crop=True, seed=1):
         super().__init__(dataset_config, indexes, batch_size, greyscale, seed)
-        self.use_crop = use_crop
-        self.raw_shape_measure = np.load(self.x_filenames[0]).shape
-        self.raw_shape_truth = np.load(self.y_filenames[0]).shape
+        self.crop = dataset_config['crop']['measurements'] if use_crop else None
+        # self.raw_shape_measure = np.load(self.x_filenames[0]).shape
+        # self.raw_shape_truth = np.load(self.y_filenames[0]).shape
 
 
     def _get_filenames(self):
@@ -171,32 +180,24 @@ class WallerlabDaloader(DataLoader):
         y_filenames = np.asarray([os.path.join(dir_y, name) for name in y_filenames])
         return x_filenames, y_filenames
 
-
     
     
     def _map_x(self, data_measure):
-        data_measure = data_measure.map(lambda item: tf.numpy_function(np.load, [item], tf.float32))
-        
-        return data_measure
-    
+        data_measure = data_measure.map(lambda item: tf.numpy_function(np_load, [item], tf.float32))
         if self.greyscale:
-            x = rgb2gray(x)
-        # to channel first
-        return x.transpose((2, 0, 1))
+            data_measure = data_measure.map(lambda item : tf.py_function(tf_rgb2gray, [item], tf.float32))
+        return data_measure.map(lambda item: tf.transpose(item, perm=[2, 0, 1]))
+
     
-    
-
-    def _get_y(self, filename):
-
-        raw_data = tf.io.read_file(filename)
-        y = np.frombuffer(raw_data.numpy(), dtype=np.float32).reshape(-1, *self.raw_shape_truth)
-        # y = self._get_x(filename.decode())
-
+    def _map_y(self, data_truth):
+        data_truth = self._map_x(data_truth)
         if self.crop:
-            y = y[:, self.crop['low_h']: self.crop['high_h'],
-                  self.crop['low_w']: self.crop['high_w']]
-        return y
+            data_truth = data_truth.map(lambda item: item[:, 
+                                                          self.crop['low_h']: self.crop['high_h'],
+                                                        self.crop['low_w']: self.crop['high_w']])
+        return data_truth
     
+
 
     def to_plottable_measurement(self, x):
         return x.transpose(1, 2, 0) / x.max()

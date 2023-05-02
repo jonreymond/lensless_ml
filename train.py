@@ -14,7 +14,7 @@ from utils import *
 import tensorflow as tf
 tf.keras.backend.set_image_data_format('channels_first')
 from keras import backend as K
-from keras.callbacks import ReduceLROnPlateau, LearningRateScheduler
+
 
 from keras.losses import MeanSquaredError
 
@@ -26,49 +26,7 @@ from datetime import datetime
 from tf_dataset import *
 
 
-def get_metrics(config):
-    """get the metrics from the config
 
-    Args:
-        config (dict): configuration dictionary
-
-    Returns:
-        (list, list): the metrics and their corresponding weights
-    """
-    metrics = []
-    metric_weights = []
-    for metric_id in config['metric'].keys():
-        metric_config = config['metric'][metric_id]
-        metrics.append(get_loss_from_name(metric_id, metric_config, config))
-        metric_weights.append(metric_config['weight'])
-
-    return metrics, metric_weights
-
-
-def get_losses(config):
-    """get the losses from the config
-
-    Args:
-        config (dict): configuration dictionary
-
-    Returns:
-        (list, list, list): the losses and their corresponding weights, and the dynamic weights
-                            that need to be updated during training
-    """
-
-    losses = []
-    weights = []
-    dynamic_weights = []
-    for loss_id in config['loss'].keys():
-        loss_config = config['loss'][loss_id]
-        losses.append(get_loss_from_name(loss_id, loss_config, config))
-        weight = loss_config['weight']
-        # add to list to be updated during callback
-        if loss_config['additive_factor']:
-            weight = K.variable(weight)
-            dynamic_weights.append((weight, loss_config['additive_factor']))
-        weights.append(weight)
-    return losses, weights, dynamic_weights
 
 
 
@@ -91,11 +49,12 @@ def main(config):
                     use_crop=config['use_crop'], 
                     seed=config['seed'])
     
-    # train_generator = get_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
-    # val_generator = get_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
+    train_generator = get_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
+    val_generator = get_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
 
-    train_generator = get_tf_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
-    val_generator = get_tf_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
+    # train_generator = get_tf_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
+    # val_generator = get_tf_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
+
 
     # train_generator = shared_mem_multiprocessing(train_generator, workers=config['workers'], queue_max_size=config['queue_max_size'])
     # val_generator = shared_mem_multiprocessing(val_generator, workers=config['workers'], queue_max_size=config['queue_max_size'])
@@ -103,10 +62,7 @@ def main(config):
     
 
     # losses
-    losses, weights, dynamic_weights = get_losses(config)
-
-  
-    loss = LossCombiner(losses, weights, name='loss_combination')
+    loss_dict, dynamic_weights = get_losses(config)
 
     # metrics
     metrics, metric_weights = get_metrics(config)
@@ -118,57 +74,32 @@ def main(config):
     in_shape = get_shape(dataset_config, measure=True, greyscale=config['greyscale'])
     out_shape = get_shape(dataset_config, measure=False, greyscale=config['greyscale'])
 
+
     model = get_model(config=config, input_shape=in_shape, out_shape=out_shape, model_name='wallerlab_model')
 
-    
 
-    # TODO : define best fixed loss weighting for validation // flatnet = lpips:1.6, mse=1
-    model.compile(optimizer = optimizer, 
-                  loss = loss,
-                  metrics = [*metrics,
-                             LossCombiner(metrics, metric_weights, name='total')])
+    model = compile_model(model=model, 
+                          optimizer=optimizer, 
+                          loss_dict=loss_dict, 
+                          metrics=metrics, 
+                          metric_weights=metric_weights, 
+                          config=config, 
+                          in_shape=in_shape, 
+                          out_shape=out_shape)
 
     print(model.summary())
+
 
     if not os.path.isdir(config['temp_store_path']):
         os.makedirs(config['temp_store_path'])
     checkpoint_path = os.path.join(config['temp_store_path'], 'checkpoint_' + str(now.strftime("%H-%M-%S")))
+
+    callbacks = get_callbacks(model=model, 
+                              checkpoint_path=checkpoint_path, 
+                              config=config, 
+                              dynamic_weights=dynamic_weights,
+                              now=now)
     
-    model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
-                                            filepath=checkpoint_path,
-                                            save_weights_only=True,
-                                            monitor='val_total',
-                                            mode='min',
-                                            save_best_only=True,
-                                            save_freq="epoch",
-                                            verbose=1)
-    
-    callbacks = [model_checkpoint]
-    if dynamic_weights:
-        callbacks.append(ChangeLossWeights(dynamic_weights))
-
-    if config['lr_reducer']['type']:
-        if config['lr_reducer']['type'] == "reduce_lr_on_plateau":
-            callbacks.append(ReduceLROnPlateau(**config['lr_reducer']['reduce_lr_on_plateau']))
-        elif config['lr_reducer']['type'] == "learning_rate_scheduler":
-            callbacks.append(LearningRateScheduler(**config['lr_reducer']['learning_rate_scheduler']))
-        else:
-            raise ValueError(config['lr_reducer']['type'] + " type is not supported, must be either 'reduce_lr_on_plateau' or 'learning_rate_scheduler'")
-
-
-
-    if config['use_tensorboard']:
-        tb_path = os.path.join(config['tensorboard_path'], str(now.date()), str(now.strftime("%H-%M-%S")), 'logs')
-        if not os.path.isdir(tb_path):
-            os.makedirs(tb_path)
-        tb_callback = tf.keras.callbacks.TensorBoard(tb_path, 
-                                                     histogram_freq = 1, 
-                                                     profile_batch=config['tensorboard_profile_batch'],
-                                                     update_freq='epoch')
-        callbacks.append(tb_callback)
-
-    
-
     model.fit(train_generator,
             epochs=config['epochs'],
             callbacks=callbacks,

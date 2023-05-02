@@ -77,7 +77,7 @@ def main(config):
     # TODO : change g_optimizer : must be optimizer for callback
     model.compile(optimizer=g_optimizer,
                   d_optimizer=d_optimizer,
-                  g_perceptual_loss=lpips_loss,
+                  lpips_loss=lpips_loss,
                   adv_weight=0.6,
                   mse_weight=1,
                   perc_weight=1.2,

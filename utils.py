@@ -20,7 +20,7 @@ MAX_UINT16_VAL = 2**16 -1
 
 
 # from project
-def rgb2gray(rgb, weights=None):
+def rgb2gray(rgb, weights=np.array([0.299, 0.587, 0.114])):
     """
     Convert RGB array to grayscale.
     Parameters
@@ -34,10 +34,14 @@ def rgb2gray(rgb, weights=None):
     img :py:class:`~numpy.ndarray`
         Grayscale image of dimension (height, width).
     """
-    if weights is None:
-        weights = np.array([0.299, 0.587, 0.114])
     assert len(weights) == 3
     return np.expand_dims(np.tensordot(rgb, weights, axes=((2,), 0)), -1)
+
+
+def tf_rgb2gray(rgb, weights=tf.constant([0.299, 0.587, 0.114], dtype=tf.float32)):
+    assert len(weights) == 3
+    return tf.expand_dims(tf.tensordot(rgb, weights, axes=((2,), 0)), -1)
+
 
 
 

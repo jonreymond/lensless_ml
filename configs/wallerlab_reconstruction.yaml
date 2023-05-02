@@ -8,7 +8,7 @@ model_name: wallerlab_unet
 workers: 8
 queue_max_size: 32
 
-batch_size: 16
+batch_size: 8
 validation_split: 0.2
 epochs: 5
 
@@ -72,4 +72,38 @@ lr_reducer:
   learning_rate_scheduler:
     scheduler: "TODO : define function def scheduler(epoch, lr): returning updated lr"
     verbose: 1
+
+use_discriminator: True
+
+discriminator:
+  optimizer:
+    identifier: "adam"
+    learning_rate: 0.01
+    use_lr_reducer: True
+
+    lr_reducer:
+      type: reduce_lr_on_plateau
+      reduce_lr_on_plateau:
+        monitor: 'val_total'
+        factor: 0.5
+        patience: 4
+        # 6e-8
+        min_lr: 0.00000006
+        verbose: 1
+      learning_rate_scheduler:
+        scheduler: "TODO : define function def scheduler(epoch, lr): returning updated lr"
+        verbose: 1
+
+  weight: 0.6
+  model:
+    filters:     [64, 128, 128, 256]
+    strides:     [1,  2,   1,   1]
+    kernel_size: [3,  3,   3,   3]
+    activation: "swish"
+    # else will use batchnorm
+    use_groupnorm: False
+    #num for groupnorm
+    num_groups: 4
+
+
 

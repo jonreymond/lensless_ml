@@ -29,12 +29,12 @@ class FlatNetGAN(Model):
         self.d_loss = DiscrLoss()
 
 
-    def compile(self, d_optimizer, g_optimizer, g_perceptual_loss, adv_weight, mse_weight, perc_weight, metrics):
-        super(FlatNetGAN, self).compile(metrics=metrics, optimizer=g_optimizer)
+    def compile(self, optimizer, d_optimizer, lpips_loss, adv_weight, mse_weight, perc_weight, metrics):
+        super(FlatNetGAN, self).compile(metrics=metrics, optimizer=optimizer)
         self.d_optimizer = optimizers.get(d_optimizer) if isinstance(d_optimizer, str) else d_optimizer
-        self.g_optimizer = optimizers.get(g_optimizer) if isinstance(g_optimizer, str) else g_optimizer
+        self.g_optimizer = optimizers.get(optimizer) if isinstance(optimizer, str) else optimizer
 
-        self.g_percept_loss = g_perceptual_loss
+        self.lpips_loss = lpips_loss
         self.g_mse_loss = MeanSquaredError()
         self.adv_weight = adv_weight
         self.mse_weight = mse_weight
@@ -66,7 +66,7 @@ class FlatNetGAN(Model):
             gen_img = self.generator(sensor_img)
             adv_loss = tf.math.reduce_mean(- tf.math.log(self.discriminator(gen_img)))
             mse_loss = self.g_mse_loss(real_img, gen_img)
-            perc_loss = self.g_percept_loss(real_img, gen_img)
+            perc_loss = self.lpips_loss(real_img, gen_img)
             g_loss_res = self.adv_weight * adv_loss + self.mse_weight * mse_loss + self.perc_weight * perc_loss
 
         grads = tape.gradient(g_loss_res, self.generator.trainable_weights)

@@ -8,7 +8,7 @@ import sys
 import time
 
 import numpy as np
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
 from keras import backend
 from keras.distribute import distributed_file_utils
@@ -34,7 +34,7 @@ try:
 except ImportError:
     requests = None
 
-from tf.keras.callbacks import Callback
+from keras.callbacks import Callback
 
 
 
