@@ -1,8 +1,13 @@
 defaults:
   - dataset: wallerlab_dataset
   - model: default_models
+# phlatnet_dataset
 
-use_camera_inversion: False
+# camera inversion
+use_camera_inversion: True
+use_psf_init: True
+wiener_gamma: 50000
+
 #will load specs of wallerlab_unet in default_models
 model_name: wallerlab_unet
 workers: 8

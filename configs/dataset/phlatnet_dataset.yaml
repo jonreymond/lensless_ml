@@ -1,6 +1,6 @@
   
 name: 'phlatnet'
-path: '/scratch/jreymond/phlatnet'
+path: '/scratch/jreymond/phlatnet_sample'
 truth_folder: 'orig_sample'
 measure_folder: 'imagenet_caps_383_12bit_Feb_19_sample'
 truth_format: JPEG
@@ -10,7 +10,7 @@ len: 323 #10000, for sample
 mask_path : 'TODO'
 
 psf:
-  path: '/scratch/jreymond/phlatnet/phase_psf/psf.npy'
+  path: '/scratch/jreymond/phlatnet_sample/phase_psf/psf.npy'
   height: 1280 
   width: 1408
   crop_size_x: 1280 

@@ -83,38 +83,23 @@ def get_wiener_matrix(psf, gamma: int = 20000):
     """get Wiener matrix of PSF
 
     Args:
-        psf (tensor): point-spread-function matrix
+        psf (numpy array): point-spread-function matrix, shape (H, W, C)
         gamma (int, optional): regularization parameter. Defaults to 20000.
 
     Returns:
-        tensor: wiener filter of psf
+        numpy array: wiener filter of psf
     """
-    H = tf.signal.rfft2d(psf)
-    H_conj = tf.math.conj(H)
-    H_absq = tf.math.abs(H)**2
 
-    res = tf.signal.irfft2d(H_conj / tf.cast(gamma + H_absq, tf.complex64))
-    return res
+    H = np.fft.rfft2(psf, axes=(0, 1))
+    H_conj = np.conj(H)
+
+    H_absq = np.abs(H)**2
+
+    res = np.fft.irfft2(H_conj / (gamma + H_absq).astype(np.complex64), axes=(0, 1), s=psf.shape[:2])
+
+    return res.astype(np.float32)
 
 
-def get_psf_cropped(psf_config):
-    """Load and crop the psf
-
-    Args:
-        config_psf (dict): config of psf
-
-    Returns:
-        tensor: cropped psf numpy
-    """
-    psf = extract_bayer(np.load(psf_config['path']))
-    # Crop
-    crop_top = psf_config['centre_x'] - psf_config['crop_size_x'] // 2
-    crop_bottom = psf_config['centre_x'] + psf_config['crop_size_x'] // 2
-    crop_left = psf_config['centre_y'] - psf_config['crop_size_y'] // 2
-    crop_right = psf_config['centre_y'] + psf_config['crop_size_y'] // 2
-
-    psf_crop = psf[crop_top:crop_bottom, crop_left:crop_right]
-    return psf_crop
 
 
 class FTLayer(tf.keras.layers.Layer):
@@ -125,19 +110,16 @@ class FTLayer(tf.keras.layers.Layer):
         psf_crop (tf.Tensor) :
         mask (TODO): 
     """
-    def __init__(self, config, psf_cropped, mask=None):
+    def __init__(self, config, psf, mask=None):
         super(FTLayer, self).__init__()
-        self.psf_cropped = psf_cropped
+        self.psf = psf
         self.config = config
 
- 
-        wiener_crop = get_wiener_matrix(tf.convert_to_tensor(psf_cropped, dtype=tf.float32), 
+        wiener_crop = get_wiener_matrix(psf, 
                                         gamma=config['wiener_gamma'])
         # TODO : define if better use add_weight
 
-        self.ft_layer = tf.Variable(wiener_crop)
-
-        # print('ft layer shape', self.ft_layer.shape)
+        self.ft_layer = tf.Variable(tf.convert_to_tensor(wiener_crop))
 
 
         self.normalizer = tf.Variable([[[[1 / 0.0008]]]], shape=(1, 1, 1, 1))
@@ -169,33 +151,41 @@ class FTLayer(tf.keras.layers.Layer):
 
 
     def build(self, input_shape):
-        # self.input_shape = input_shape
         _, c, h, w = input_shape
-        x_diff = h - self.ft_h
-        y_diff = w - self.ft_w
-        h_before = x_diff // 2
-        h_after = x_diff - h_before
-        w_before = y_diff // 2
-        w_after = y_diff - w_before
-        self.pad_input = ((h_before, h_after), (w_before, w_after), (0,0))
-        self.in_shape = input_shape
+        # here pad psf to match input shape
+        self.pad_input = None
+        self.pad_psf = None
+        
+        if (h - self.ft_h) < 0 and (w - self.ft_w) < 0:
+            # need to pad input
+            x_diff = self.ft_h - h
+            y_diff = self.ft_w - w
+            h_before = x_diff // 2
+            h_after = x_diff - h_before
+            w_before = y_diff // 2
+            w_after = y_diff - w_before
+            self.pad_input = ((h_before, h_after), (w_before, w_after))
 
-        # to pad x 
-        # x_diff = self.ft_h - h
-        # y_diff = self.ft_w - w
-        # h_before = x_diff // 2
-        # h_after = x_diff - h_before
-        # w_before = y_diff // 2
-        # w_after = y_diff - w_before
-        # self.pad_input = ((h_before, h_after), (w_before, w_after))
-        # self.in_shape = input_shape
+        elif (h - self.ft_h) >= 0 and (w - self.ft_w) >= 0:
+            # need to pad psf
+            x_diff = h - self.ft_h
+            y_diff = w - self.ft_w
+            h_before = x_diff // 2
+            h_after = x_diff - h_before
+            w_before = y_diff // 2
+            w_after = y_diff - w_before
+            self.pad_psf = ((h_before, h_after), (w_before, w_after))
+
+            self.in_shape = input_shape
+        else:
+            raise NotImplementedError('Need to pad PSF and input')
         return
     
     def get_config(self):
         config = super().get_config()
 
         config.update({
-            "psf_cropped": self.psf_cropped,
+            "psf_cropped": self.psf,
             "config": OmegaConf.to_object(self.config),
             "mask": self.mask
         })
@@ -203,16 +193,17 @@ class FTLayer(tf.keras.layers.Layer):
       
 
     def call(self, x):
-        # TODO: why not in __init__ ? other reason to not use directly wiener_crop ?
-        # pad for fft, way to simplify ?
+        if self.pad_input:
+            x = ZeroPadding2D(padding=self.pad_input)(x)
+            print('x shape', x.shape)
+            # x = tf.pad(x, paddings=self.pad_input, mode="CONSTANT")
 
-        # print('ft layer before:', ft_layer.shape)
-        # print((self.pad_y, self.pad_y), (self.pad_x, self.pad_x))
-        # curr_ft_layer = tf.pad(self.ft_layer, ((self.pad_y, self.pad_y), (self.pad_x, self.pad_x), (0, 0)), "CONSTANT")
-        # print('x shape input', x.shape)
+        curr_ft_layer = self.ft_layer
+        print('ft layer before:', curr_ft_layer.shape)
+        if self.pad_psf:
+            # print(self.pad)
+            curr_ft_layer = tf.pad(curr_ft_layer, paddings=self.pad_psf, mode="CONSTANT")
 
-        curr_ft_layer = tf.pad(self.ft_layer, paddings=self.pad_input, mode="CONSTANT")
-        # print('ft_shape', curr_ft_layer.shape)
         
         for axis in range(2):
             curr_ft_layer = tf.roll(curr_ft_layer, axis=axis, shift=-(curr_ft_layer.shape[axis] // 2))
@@ -278,7 +269,7 @@ class FTLayer(tf.keras.layers.Layer):
 
 
 # TODO : only work for flatnet yet
-def get_camera_inversion_layer(input, config):
+def get_camera_inversion_layer(input, config, psf=None, mask=None):
     if config['dataset']['type_mask'] == 'separable':
         d = scipy.io.loadmat(config['dataset']['calibrated_path'])
         phi_l = np.zeros((500, 256))
@@ -290,9 +281,7 @@ def get_camera_inversion_layer(input, config):
         x = SeparableLayer(phi_l.T, phi_r)(input)
         
     else :
-        psf_cropped = get_psf_cropped(config['dataset']['psf'])
-        mask = np.load(config['dataset']['mask_path'], np.float32) if config['use_mask'] else None
-        x = FTLayer(config, psf_cropped=psf_cropped, mask=mask)(input)
+        x = FTLayer(config, psf=psf, mask=mask)(input)
     return x
 
 

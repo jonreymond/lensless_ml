@@ -4,6 +4,36 @@ from models.flatnet.gan import *
 from models.flatnet.discriminator import *
 from keras.callbacks import ReduceLROnPlateau, LearningRateScheduler
 from custom_callbacks import *
+from PIL import Image
+from utils import *
+
+
+MAX_UINT8_VAL = 2**8 -1
+
+
+def get_psf(config):
+    data_config = config['dataset']
+    psf_config = data_config['psf']
+    if data_config['name'] == 'wallerlab':
+        psf = (np.array(Image.open(psf_config['path'])) / MAX_UINT16_VAL).astype('float32')
+        return rgb2gray(psf) if config['greyscale'] else psf
+    
+    elif data_config['name'] == 'phlatnet':
+        
+        psf = extract_bayer(np.load(psf_config['path']))
+        # Crop
+        crop_top = psf_config['centre_x'] - psf_config['crop_size_x'] // 2
+        crop_bottom = psf_config['centre_x'] + psf_config['crop_size_x'] // 2
+        crop_left = psf_config['centre_y'] - psf_config['crop_size_y'] // 2
+        crop_right = psf_config['centre_y'] + psf_config['crop_size_y'] // 2
+
+        psf_crop = psf[crop_top:crop_bottom, crop_left:crop_right]
+        return psf_crop
+    
+    elif data_config['name'] == 'flatnet':
+        raise NotImplementedError('flatnet dataset not implemented yet')
+    else:
+        raise ValueError(f'Unknown dataset name: {data_config["name"]}, please define how to extract the psf for this dataset')
 
 
     
@@ -14,7 +44,8 @@ def get_model(config, input_shape, out_shape, model_name='Reconstruction model')
     x = input
 
     if config['use_camera_inversion']:
-        x = get_camera_inversion_layer(x, config)
+        psf = get_psf(config) if config['use_psf_init'] else None
+        x = get_camera_inversion_layer(input=x, config=config, psf=psf, mask=None)
 
     if model_config['type'] == 'unet':
         model_config.pop('type')
