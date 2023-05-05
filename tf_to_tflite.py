@@ -7,7 +7,8 @@ import tensorflow as tf
 import itertools
 from collections import Counter
 from dataset import get_dataset
-
+import sys
+import shutil
   
   
 def representative_data_gen(reconstruct_config, num_samples=None):
@@ -30,10 +31,13 @@ def representative_data_gen(reconstruct_config, num_samples=None):
     generator = get_dataset(reconstruct_config['dataset']['name'], dataset_config, indexes, data_args)
 
     # TODO: check if need to reshape
-    return ([np.array(x, dtype=np.float32)] for x in generator)
+    for x in generator:
+        print(x[0].shape)
+        break
+    return ([np.array(x[0], dtype=np.float32)] for x in generator)
 
 
-def create_tflite_interpreter(export_dir, with_optimization, with_quantization, store_path=None, repr_data_gen=None):
+def create_tflite_interpreter(export_dir, with_optimization, with_quantization, store_path=None, repr_data_gen=None, use_debug=False):
     '''Creates the tflite interpreter from a tensorflow model
     Args:
         export_dir (str): location of the trained tensorflow model
@@ -45,7 +49,7 @@ def create_tflite_interpreter(export_dir, with_optimization, with_quantization, 
         dict: the tflite interpreter, as well as the input, output pointers
     '''
     converter = tf.lite.TFLiteConverter.from_saved_model(export_dir)
-    debugger = None
+    
     if with_optimization:
         print('with weights compression')
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
@@ -62,9 +66,11 @@ def create_tflite_interpreter(export_dir, with_optimization, with_quantization, 
         # converter.inference_output_type = tf.uint8
         
     tflite_model = converter.convert()
-    
-    debugger = tf.lite.experimental.QuantizationDebugger(
-                    converter=converter, debug_dataset=(lambda : repr_data_gen))
+
+    debugger = None
+    if use_debug:
+        debugger = tf.lite.experimental.QuantizationDebugger(
+                        converter=converter, debug_dataset=(lambda : repr_data_gen))
     if store_path is not None:
         tflite_model_file = pathlib.Path(store_path)
         tflite_model_file.write_bytes(tflite_model)
@@ -97,24 +103,24 @@ def get_tflite_output(interpreter_dict, test_sample):
     return interpreter.get_tensor(interpreter_dict['output'])
 
 
-def tflite_to_cc(config):
+def tflite_to_cc(name_model, tflite_path):
     '''Transfrom a .tflite file to a .cc + .h file. It assumes that the .tflite is stored in config['tflite_path'].
         it will store the result in the same folder where the .tflite is located
         
     '''
-    path_cc = config['tflite_path'].replace(".tflite", "_temp.cc")
-    os.system("xxd -i " + config['tflite_path'] + " > " + path_cc)
+    path_cc = tflite_path.replace(".tflite", "_temp.cc")
+    os.system("xxd -i " + tflite_path + " > " + path_cc)
 
-    old_name_model = config['tflite_path'].replace('/', '_').replace('.', '_')
+    old_name_model = tflite_path.replace('/', '_').replace('.', '_')
 
     outfile = path_cc.replace("_temp.cc", ".cc")
 
     #write final .cc file
     with open(path_cc) as fin, open(outfile, "w+") as fout:
-        fout.write( '''#include "'''+ config['name_model'] + '.h' + '''"'''+ '\n\n')
+        fout.write( '''#include "'''+ name_model + '.h' + '''"'''+ '\n\n')
         for line in fin:
             new_line = line
-            new_line = new_line.replace(old_name_model, config['name_model'])
+            new_line = new_line.replace(old_name_model, name_model)
             new_line = new_line.replace('unsigned char', 'alignas(16) const unsigned char')
             new_line = new_line.replace('unsigned int', 'const unsigned int')
             fout.write(new_line)
@@ -123,8 +129,8 @@ def tflite_to_cc(config):
     outfile_h = outfile.replace(".cc", ".h")
     with open(outfile_h, "w+") as fout:
         fout.write("#include <cstdint>" '\n\n')
-        fout.write("extern const unsigned char " + config['name_model'] + "[];\n")
-        fout.write("extern const unsigned int " + config['name_model'] + "_len;\n")
+        fout.write("extern const unsigned char " + name_model + "[];\n")
+        fout.write("extern const unsigned int " + name_model + "_len;\n")
 
     #remove temporary file
     os.remove(path_cc)
@@ -135,22 +141,39 @@ def tflite_to_cc(config):
 def main(config):
     '''Main function to transform a tensorflow model to a tflite model, and then to a .cc + .h file
     '''
-    tflite_folder = os.path.dirname(config['tflite_path'])
-    if not os.path.exists(tflite_folder):
-        os.makedirs(tflite_folder)
+    print('='* 80)
+
 
     num_samples = config['num_samples'] if config['num_samples'] != 'None' else None
     
-    repr_data_gen = representative_data_gen(config['reconstruction'], num_samples=num_samples)
+    repr_data_gen = representative_data_gen(config, num_samples=num_samples)
+
+
+    model_path = os.path.join(config['store_folder'], 'tensorflow', 'models', config['model_name'] + '.pb')
+    tflite_folder = os.path.join(config['store_folder'], 'tflite')
+    tflite_path = os.path.join(tflite_folder, config['model_name'] + '.tflite')
+    if not os.path.exists(os.path.dirname(tflite_path)):
+        os.makedirs(os.path.dirname(tflite_path))
     
-    tflite_interp_quant = create_tflite_interpreter(config['model_path'], 
+    tflite_interp_quant = create_tflite_interpreter(model_path, 
                                                     with_optimization=config['with_optimization'], 
                                                     with_quantization=config['with_quantization'], 
-                                                    store_path=config['tflite_path'],
-                                                    repr_data_gen= repr_data_gen
+                                                    store_path=tflite_path,
+                                                    repr_data_gen= repr_data_gen,
+                                                    use_debug=config['use_debug']
                                                     )
 
-    tflite_to_cc(config)
+    tflite_to_cc(name_model=config['model_name'], tflite_path=tflite_path)
+
+    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
+    temp_store_folder = hydra_cfg['runtime']['output_dir']
+    shutil.move(os.path.join(temp_store_folder, '.hydra'), 
+              os.path.join(tflite_folder, '.hydra'))
+    os.rename(os.path.join(temp_store_folder, 'tf_to_tflite.log'),
+              os.path.join(tflite_folder, 'tf_to_tflite.log'))
+    os.rmdir(temp_store_folder)
+
+
 
 
 
