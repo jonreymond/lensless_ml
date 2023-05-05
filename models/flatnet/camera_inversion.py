@@ -13,7 +13,7 @@ from models.unet import u_net
 from utils import *
 from omegaconf import OmegaConf
 import scipy
-
+from PIL import Image
 
 
 ######################################################################
@@ -195,11 +195,9 @@ class FTLayer(tf.keras.layers.Layer):
     def call(self, x):
         if self.pad_input:
             x = ZeroPadding2D(padding=self.pad_input)(x)
-            print('x shape', x.shape)
-            # x = tf.pad(x, paddings=self.pad_input, mode="CONSTANT")
 
         curr_ft_layer = self.ft_layer
-        print('ft layer before:', curr_ft_layer.shape)
+
         if self.pad_psf:
             # print(self.pad)
             curr_ft_layer = tf.pad(curr_ft_layer, paddings=self.pad_psf, mode="CONSTANT")
@@ -241,46 +239,58 @@ class FTLayer(tf.keras.layers.Layer):
         return x
     
 
-# def flatnet_reconstruction(config, input_shape):
+##############################################################################################################
+##############################################################################################################
+##############################################################################################################
+##############################################################################################################
+
+MAX_UINT8_VAL = 2**8 -1
+
+
+def get_psf(config):
+    data_config = config['dataset']
+    psf_config = data_config['psf']
+    if data_config['name'] == 'wallerlab':
+        psf = (np.array(Image.open(psf_config['path'])) / MAX_UINT16_VAL).astype('float32')
+        return rgb2gray(psf) if config['greyscale'] else psf
     
-#     input = Input(shape=input_shape)
-
-#     if config['dataset']['type_mask'] == 'separable':
-#         d = scipy.io.loadmat(config['dataset']['calibrated_path'])
-#         phi_l = np.zeros((500, 256))
-#         phi_r = np.zeros((620, 256))
-#         phi_l[:,:] = d['P1gb']
-#         phi_r[:,:] = d['Q1gb']
-#         phi_l = phi_l.astype('float32')
-#         phi_r = phi_r.astype('float32') 
-#         x = SeparableLayer(phi_l.T, phi_r)(input)
+    elif data_config['name'] == 'phlatnet':
         
-#     else :
-#         psf_cropped = get_psf_cropped(config['dataset']['psf'])
-#         mask = np.load(config['dataset']['mask_path'], np.float32) if config['use_mask'] else None
-#         x = FTLayer(config, psf_cropped=psf_cropped, mask=mask)(input)
-#         # output = tf.repeat(tf.expand_dims(tf.math.reduce_sum(x, axis=1), 1), repeats=3, axis=1)
+        psf = extract_bayer(np.load(psf_config['path']))
+        # Crop
+        crop_top = psf_config['centre_x'] - psf_config['crop_size_x'] // 2
+        crop_bottom = psf_config['centre_x'] + psf_config['crop_size_x'] // 2
+        crop_left = psf_config['centre_y'] - psf_config['crop_size_y'] // 2
+        crop_right = psf_config['centre_y'] + psf_config['crop_size_y'] // 2
+
+        psf_crop = psf[crop_top:crop_bottom, crop_left:crop_right]
+        return psf_crop
+    
+    elif data_config['name'] == 'flatnet':
+        raise NotImplementedError('flatnet dataset not implemented yet')
+    else:
+        raise ValueError(f'Unknown dataset name: {data_config["name"]}, please define how to extract the psf for this dataset')
 
 
-#     print('before unet', x.shape[1:])
-#     enhancer_model = u_net(x.shape[1:], **config['model']['enhancer']['unet32'])
-#     output = enhancer_model(x)
-#     return Model(inputs=[input], outputs=[output], name='Generator')
-
-
-# TODO : only work for flatnet yet
-def get_camera_inversion_layer(input, config, psf=None, mask=None):
-    if config['dataset']['type_mask'] == 'separable':
+def get_separable_init_matrices(config):
+    if config['dataset']['name'] == 'flatnet':
         d = scipy.io.loadmat(config['dataset']['calibrated_path'])
-        phi_l = np.zeros((500, 256))
-        phi_r = np.zeros((620, 256))
-        phi_l[:,:] = d['P1gb']
-        phi_r[:,:] = d['Q1gb']
-        phi_l = phi_l.astype('float32')
-        phi_r = phi_r.astype('float32') 
+        phi_l = d['P1gb']
+        phi_r = d['Q1gb']
+        return phi_l, phi_r
+    else:
+        raise NotImplementedError('Only flatnet dataset implemented, implement the loading of the left-right matrices for this dataset')
+
+
+
+def get_camera_inversion_layer(input, config, mask=None):
+    if config['dataset']['type_mask'] == 'separable':
+        phi_l, phi_r = get_separable_init_matrices(config)
+
         x = SeparableLayer(phi_l.T, phi_r)(input)
         
     else :
+        psf = get_psf(config) if config['use_psf_init'] else None
         x = FTLayer(config, psf=psf, mask=mask)(input)
     return x
 

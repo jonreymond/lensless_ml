@@ -4,52 +4,26 @@ from models.flatnet.gan import *
 from models.flatnet.discriminator import *
 from keras.callbacks import ReduceLROnPlateau, LearningRateScheduler
 from custom_callbacks import *
-from PIL import Image
+
 from utils import *
 
 
-MAX_UINT8_VAL = 2**8 -1
 
-
-def get_psf(config):
-    data_config = config['dataset']
-    psf_config = data_config['psf']
-    if data_config['name'] == 'wallerlab':
-        psf = (np.array(Image.open(psf_config['path'])) / MAX_UINT16_VAL).astype('float32')
-        return rgb2gray(psf) if config['greyscale'] else psf
-    
-    elif data_config['name'] == 'phlatnet':
-        
-        psf = extract_bayer(np.load(psf_config['path']))
-        # Crop
-        crop_top = psf_config['centre_x'] - psf_config['crop_size_x'] // 2
-        crop_bottom = psf_config['centre_x'] + psf_config['crop_size_x'] // 2
-        crop_left = psf_config['centre_y'] - psf_config['crop_size_y'] // 2
-        crop_right = psf_config['centre_y'] + psf_config['crop_size_y'] // 2
-
-        psf_crop = psf[crop_top:crop_bottom, crop_left:crop_right]
-        return psf_crop
-    
-    elif data_config['name'] == 'flatnet':
-        raise NotImplementedError('flatnet dataset not implemented yet')
-    else:
-        raise ValueError(f'Unknown dataset name: {data_config["name"]}, please define how to extract the psf for this dataset')
 
 
     
 
 def get_model(config, input_shape, out_shape, model_name='Reconstruction model'):
     model_config = dict(config['model'][config['model_name']])
-    input = Input(shape=input_shape, name='Input')
+    input = Input(shape=input_shape, name='input')
     x = input
 
     if config['use_camera_inversion']:
-        psf = get_psf(config) if config['use_psf_init'] else None
-        x = get_camera_inversion_layer(input=x, config=config, psf=psf, mask=None)
+        x = get_camera_inversion_layer(input=x, config=config, mask=None)
 
     if model_config['type'] == 'unet':
         model_config.pop('type')
-        x = u_net(input=x, **model_config, out_shape=out_shape)(x)
+        x = u_net(input=x, **model_config, out_shape=out_shape)
         
     else:
         raise ValueError(f'Unknown model type: {model_config["type"]}')
@@ -103,28 +77,23 @@ def get_losses(config):
     return loss_dict, dynamic_weights
 
 
-def compile_model(model, optimizer, loss_dict, metrics, metric_weights, config, in_shape=None, out_shape=None):
-    if not config['use_discriminator']:
-
+def compile_model(gen_model, gen_optimizer, loss_dict, metrics, metric_weights, discr_args=None, in_shape=None, out_shape=None):
+    if not discr_args:
         loss_weights, losses = zip(*list(loss_dict.values()))
         loss = LossCombiner(losses, loss_weights, name='loss_comb')
-        model.compile(optimizer=optimizer, 
+        gen_model.compile(optimizer=gen_optimizer, 
                              loss=loss, 
                              metrics=[*metrics, LossCombiner(metrics, metric_weights, name='total')])
+        model = gen_model
     
     else:
+        model = FlatNetGAN(discriminator=discr_args['model'], generator=gen_model)
 
-        discriminator = get_discriminator(out_shape, **config['discriminator']['model'])
-        print('='*50)
-        print(in_shape)
-
-        model = FlatNetGAN(discriminator, model)
-        d_optimizer = tf.keras.optimizers.get(**config['discriminator']['optimizer'])
         lpips_loss = loss_dict['lpips'][1]
 
-        model.compile(optimizer=optimizer,
-                    d_optimizer=d_optimizer,
-                    adv_weight=config['discriminator']['weight'],
+        model.compile(optimizer=gen_optimizer,
+                    d_optimizer=discr_args['optimizer'],
+                    adv_weight=discr_args['adv_weight'],
                     mse_weight=loss_dict['mse'][0],
                     lpips_loss=lpips_loss,
                     perc_weight=loss_dict['lpips'][0],
@@ -136,7 +105,8 @@ def compile_model(model, optimizer, loss_dict, metrics, metric_weights, config, 
     return model
 
 
-def get_callbacks(model, checkpoint_path, dynamic_weights, now, config):
+def get_callbacks(model, store_folder, checkpoint_path, dynamic_weights, config):
+
     model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
                                             filepath=checkpoint_path,
                                             save_weights_only=True,
@@ -170,7 +140,7 @@ def get_callbacks(model, checkpoint_path, dynamic_weights, now, config):
 
 
     if config['use_tensorboard']:
-        tb_path = os.path.join(config['tensorboard_path'], str(now.date()), str(now.strftime("%H-%M-%S")), 'logs')
+        tb_path = os.path.join(store_folder, 'tensorboard_logs')
         if not os.path.isdir(tb_path):
             os.makedirs(tb_path)
         tb_callback = tf.keras.callbacks.TensorBoard(tb_path, 

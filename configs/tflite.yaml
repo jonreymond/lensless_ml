@@ -1,4 +1,11 @@
 defaults:
   - reconstruction: wallerlab_reconstruction.yaml
 
-model_storage:
+model_path: ''
+with_optimization: True
+with_quantization: True
+tflite_path: ''
+name_model: ''
+
+
+num_samples: None
