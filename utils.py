@@ -2,6 +2,7 @@ import os
 import tensorflow as tf
 from lpips import LPIPS
 import torch
+
 from torch_to_tf import to_tf_graph
 from keras import backend as K
 import sys
@@ -107,10 +108,10 @@ def get_lpips_loss(config, lpips_model):
     lpips_path = os.path.join('lpips_losses', get_lpips_name())
 
     if not os.path.isfile(lpips_path + '.pb'):
-        lpips_loss = LPIPS(net=lpips_model).cuda()
+        lpips_loss = LPIPS(net=lpips_model)#.cuda()
         #change to satisfy with torch order : first channels
-        sample_input = (torch.randn(config['batch_size'], *shape, requires_grad=False).cuda(),
-                        torch.randn(config['batch_size'], *shape, requires_grad=False).cuda())
+        sample_input = (torch.randn(config['batch_size'], *shape, requires_grad=False),#.cuda(),
+                        torch.randn(config['batch_size'], *shape, requires_grad=False))#.cuda())
         to_tf_graph(lpips_loss, sample_input, lpips_path)
 
     stored_lpips = tf.keras.models.load_model(lpips_path + '.pb')

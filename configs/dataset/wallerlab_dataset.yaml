@@ -1,5 +1,5 @@
 name: wallerlab
-path: /scratch/bezzam/DiffuserCam_mirflickr/dataset
+path: /scratch/DiffuserCam
 # psf_path: 
 # path: /scratch/jreymond/unet_subset
 psf_path: data/psf/tape_rgb.png

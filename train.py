@@ -1,5 +1,10 @@
 import setGPU
 import hydra
+
+import tensorflow as tf
+tf.keras.backend.set_image_data_format('channels_first')
+from keras import backend as K
+
 from dataset import get_dataset
 from models.unet import u_net
 import numpy as np
@@ -11,14 +16,11 @@ from models.model_utils import *
 import json
 from utils import *
 
-import tensorflow as tf
-tf.keras.backend.set_image_data_format('channels_first')
-from keras import backend as K
+
 
 
 from keras.losses import MeanSquaredError
 
-from torchsummary import summary
 
 from functools import partial
 from datetime import datetime
@@ -32,7 +34,10 @@ from tf_dataset import *
 
 @hydra.main(version_base=None, config_path="configs", config_name="wallerlab_reconstruction")
 def main(config):
-    
+    print(tf.config.list_physical_devices('GPU'))
+    print(tf.__version__)
+    # sys.exit()
+
     now = datetime.now()
 
     dataset_config = config['dataset']
