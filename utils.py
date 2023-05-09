@@ -268,3 +268,6 @@ def shared_mem_multiprocessing(sequence, workers=8, queue_max_size=32):
         queue.close()
         manager.shutdown()
         manager.join()
+
+
+

@@ -5,20 +5,25 @@ from models.flatnet.discriminator import *
 from keras.callbacks import ReduceLROnPlateau, LearningRateScheduler
 from custom_callbacks import *
 
+from utils import *
+
+
+
+
 
     
 
 def get_model(config, input_shape, out_shape, model_name='Reconstruction model'):
     model_config = dict(config['model'][config['model_name']])
-    input = Input(shape=input_shape, name='Input')
+    input = Input(shape=input_shape, name='input')
     x = input
 
     if config['use_camera_inversion']:
-        x = get_camera_inversion_layer(x, config)
+        x = get_camera_inversion_layer(input=x, config=config, mask=None)
 
     if model_config['type'] == 'unet':
         model_config.pop('type')
-        x = u_net(input=x, **model_config, out_shape=out_shape)(x)
+        x = u_net(input=x, **model_config, out_shape=out_shape)
         
     else:
         raise ValueError(f'Unknown model type: {model_config["type"]}')
@@ -72,28 +77,23 @@ def get_losses(config):
     return loss_dict, dynamic_weights
 
 
-def compile_model(model, optimizer, loss_dict, metrics, metric_weights, config, in_shape=None, out_shape=None):
-    if not config['use_discriminator']:
-
+def compile_model(gen_model, gen_optimizer, loss_dict, metrics, metric_weights, discr_args=None, in_shape=None, out_shape=None):
+    if not discr_args:
         loss_weights, losses = zip(*list(loss_dict.values()))
         loss = LossCombiner(losses, loss_weights, name='loss_comb')
-        model.compile(optimizer=optimizer, 
+        gen_model.compile(optimizer=gen_optimizer, 
                              loss=loss, 
                              metrics=[*metrics, LossCombiner(metrics, metric_weights, name='total')])
+        model = gen_model
     
     else:
+        model = FlatNetGAN(discriminator=discr_args['model'], generator=gen_model)
 
-        discriminator = get_discriminator(out_shape, **config['discriminator']['model'])
-        print('='*50)
-        print(in_shape)
-
-        model = FlatNetGAN(discriminator, model)
-        d_optimizer = tf.keras.optimizers.get(**config['discriminator']['optimizer'])
         lpips_loss = loss_dict['lpips'][1]
 
-        model.compile(optimizer=optimizer,
-                    d_optimizer=d_optimizer,
-                    adv_weight=config['discriminator']['weight'],
+        model.compile(optimizer=gen_optimizer,
+                    d_optimizer=discr_args['optimizer'],
+                    adv_weight=discr_args['adv_weight'],
                     mse_weight=loss_dict['mse'][0],
                     lpips_loss=lpips_loss,
                     perc_weight=loss_dict['lpips'][0],
@@ -105,7 +105,8 @@ def compile_model(model, optimizer, loss_dict, metrics, metric_weights, config, 
     return model
 
 
-def get_callbacks(model, checkpoint_path, dynamic_weights, now, config):
+def get_callbacks(model, store_folder, checkpoint_path, dynamic_weights, config):
+
     model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
                                             filepath=checkpoint_path,
                                             save_weights_only=True,
@@ -139,7 +140,7 @@ def get_callbacks(model, checkpoint_path, dynamic_weights, now, config):
 
 
     if config['use_tensorboard']:
-        tb_path = os.path.join(config['tensorboard_path'], str(now.date()), str(now.strftime("%H-%M-%S")), 'logs')
+        tb_path = os.path.join(store_folder, 'tensorboard_logs')
         if not os.path.isdir(tb_path):
             os.makedirs(tb_path)
         tb_callback = tf.keras.callbacks.TensorBoard(tb_path, 

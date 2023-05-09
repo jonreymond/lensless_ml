@@ -1,9 +1,8 @@
 import setGPU
+from utils import *
 import hydra
-
-import tensorflow as tf
-tf.keras.backend.set_image_data_format('channels_first')
-from keras import backend as K
+# from hydra.utils import get_original_cwd
+# change_hydra_output_dir(get_original_cwd)
 
 from dataset import get_dataset
 from models.unet import u_net
@@ -14,9 +13,11 @@ from sklearn.model_selection import train_test_split
 from models.model_utils import *
 
 import json
-from utils import *
 
 
+import tensorflow as tf
+tf.keras.backend.set_image_data_format('channels_first')
+from keras import backend as K
 
 
 from keras.losses import MeanSquaredError
@@ -27,21 +28,27 @@ from datetime import datetime
 
 from tf_dataset import *
 
+import tensorflow_model_optimization as tfmot
 
+from hydra.utils import get_original_cwd, to_absolute_path
 
 
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="wallerlab_reconstruction")
 def main(config):
-    print(tf.config.list_physical_devices('GPU'))
-    print(tf.__version__)
-    # sys.exit()
+    print('='*80)
+    print('='*80)
+    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
+    store_folder = hydra_cfg['runtime']['output_dir']
+    print('Store folder: ', store_folder)
+    print('-'*80)
 
-    now = datetime.now()
 
     dataset_config = config['dataset']
     indexes = np.arange(dataset_config['len'])
+    if config['test']:
+        indexes = indexes[:100]
 
     train_indexes, val_indexes = train_test_split(indexes, 
                                                   test_size=config['validation_split'], 
@@ -64,7 +71,6 @@ def main(config):
     # train_generator = shared_mem_multiprocessing(train_generator, workers=config['workers'], queue_max_size=config['queue_max_size'])
     # val_generator = shared_mem_multiprocessing(val_generator, workers=config['workers'], queue_max_size=config['queue_max_size'])
 
-    
 
     # losses
     loss_dict, dynamic_weights = get_losses(config)
@@ -80,30 +86,49 @@ def main(config):
     out_shape = get_shape(dataset_config, measure=False, greyscale=config['greyscale'])
 
 
-    model = get_model(config=config, input_shape=in_shape, out_shape=out_shape, model_name='wallerlab_model')
+    gen_model = get_model(config=config, input_shape=in_shape, out_shape=out_shape, model_name='wallerlab_model')
+    if config['load_pretrained']:
+        gen_model.load_weights(config['pretrained_path']).expect_partial()
+
+    print(gen_model.summary())
+    
+    if config['use_QAT']:
+        gen_model = tfmot.quantization.keras.quantize_model(gen_model)
+
+    
+
+    discr_args = None
+    if config['use_discriminator']:
+        d_model = get_discriminator(out_shape, **config['discriminator']['model'])
+        d_optimizer = tf.keras.optimizers.get(**config['discriminator']['optimizer'])
+        print(d_model.summary())
+
+        adv_weight = config['discriminator']['weight']
+        discr_args = dict(model=d_model, optimizer=d_optimizer, adv_weight=adv_weight)
 
 
-    model = compile_model(model=model, 
-                          optimizer=optimizer, 
+    model = compile_model(gen_model=gen_model, 
+                          gen_optimizer=optimizer, 
                           loss_dict=loss_dict, 
                           metrics=metrics, 
                           metric_weights=metric_weights, 
-                          config=config, 
+                          discr_args=discr_args,
                           in_shape=in_shape, 
                           out_shape=out_shape)
 
     print(model.summary())
 
 
-    if not os.path.isdir(config['temp_store_path']):
-        os.makedirs(config['temp_store_path'])
-    checkpoint_path = os.path.join(config['temp_store_path'], 'checkpoint_' + str(now.strftime("%H-%M-%S")))
+    checkpoint_path = os.path.join(store_folder, 'checkpoints')
+    if not os.path.isdir(checkpoint_path):
+        os.makedirs(checkpoint_path)
+    checkpoint_path += '/'
 
     callbacks = get_callbacks(model=model, 
+                              store_folder=store_folder,
                               checkpoint_path=checkpoint_path, 
                               config=config, 
-                              dynamic_weights=dynamic_weights,
-                              now=now)
+                              dynamic_weights=dynamic_weights)
     
     model.fit(train_generator,
             epochs=config['epochs'],
@@ -118,11 +143,11 @@ def main(config):
 
     if config['save']:
         print('saving model ...')
-        store_path = config['model_path'] + '/' + str(now.date())
+        store_path = os.path.join(store_folder, 'models')
         if not os.path.isdir(store_path):
             os.makedirs(store_path)
-        name =  config['model']['name'] + "_" + str(now.strftime("%H-%M-%S")) + '.pb'
-        # name =  config['model']['name'] + ".pb"
+        name =  config['model_name'] + '.pb'
+
         tf.saved_model.save(model, os.path.join(store_path, name))
 
 

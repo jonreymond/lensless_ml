@@ -1,30 +1,41 @@
 defaults:
   - dataset: wallerlab_dataset
   - model: default_models
-
-use_camera_inversion: False
+  - _self_
 #will load specs of wallerlab_unet in default_models
 model_name: wallerlab_unet
+
+# camera inversion
+use_camera_inversion: False
+use_psf_init: True
+wiener_gamma: 50000
+
+# Quantization Aware Training
+use_QAT: False
+
+# GAN
+use_discriminator: False
+
 workers: 8
-queue_max_size: 32
+# queue_max_size: 32
 
 batch_size: 8
-validation_split: 0.2
-epochs: 5
+validation_split: 0.8
+epochs: 3
+# to be used to test the train pipeline : will only train on a subset of the dataset
+test: True
 
 device_conv: cuda    # "cuda" or "cpu"
   
 greyscale: False
 
 save: True
-model_path: stored_models
+
 use_tensorboard: True
-tensorboard_path: "tensorboard_results"
 # to get the number of batches processed by tensorboard in each epoch for runtime analysis
 # may induce runtime overhead if set too high
 tensorboard_profile_batch: 50
 
-temp_store_path: "temp"
 
 use_crop: True
 
@@ -34,7 +45,7 @@ seed: 1   # Note : will not result in a deterministic output if use cuda device
 optimizer:
   # name of optimizer technique desired
   identifier: "adam"
-  learning_rate: 0.01
+  learning_rate: 0.0001
 
 
 loss:
@@ -73,12 +84,12 @@ lr_reducer:
     scheduler: "TODO : define function def scheduler(epoch, lr): returning updated lr"
     verbose: 1
 
-use_discriminator: True
+
 
 discriminator:
   optimizer:
     identifier: "adam"
-    learning_rate: 0.01
+    learning_rate: 0.0001
     use_lr_reducer: True
 
     lr_reducer:
@@ -105,5 +116,12 @@ discriminator:
     #num for groupnorm
     num_groups: 4
 
+# load pretrained model
+load_pretrained: False
+pretrained_path: "pretrained_models"
 
 
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}/tensorflow

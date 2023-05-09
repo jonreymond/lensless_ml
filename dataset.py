@@ -233,10 +233,12 @@ MAX_UINT16_VAL = 2**16 -1
 # TODO: Not for test, see implementation for case test
 class PhlatnetDataGenerator(DataGenerator):
     'Generates data for Keras'
-    def __init__(self, dataset_config, indexes, batch_size=8, seed=1, use_crop=True, gaussian_noise=0):
+    def __init__(self, dataset_config, indexes, batch_size=8, seed=1, use_crop=True, gaussian_noise=0, greyscale=False):
 
         super().__init__(dataset_config, indexes, batch_size=8, seed=1)
-
+        if greyscale:
+            raise NotImplementedError('greyscale not implemented yet for phlatnet dataset')
+        
         self.gaussian_noise = gaussian_noise
         self.crop = use_crop
         self.use_padding = dataset_config['padding']
