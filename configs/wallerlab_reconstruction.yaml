@@ -1,12 +1,15 @@
 defaults:
-  - dataset: wallerlab_dataset
+  - dataset: flatnet_dataset
+  # - dataset: phlatnet_dataset
+  # - dataset : wallerlab_dataset
   - model: default_models
   - _self_
 #will load specs of wallerlab_unet in default_models
-model_name: wallerlab_unet
+model_name: unet128 
+# model_name: wallerlab_unet
 
 # camera inversion
-use_camera_inversion: False
+use_camera_inversion: True
 use_psf_init: True
 wiener_gamma: 50000
 
@@ -14,16 +17,16 @@ wiener_gamma: 50000
 use_QAT: False
 
 # GAN
-use_discriminator: False
+use_discriminator: True
 
-workers: 8
+workers: 16
 # queue_max_size: 32
 
 batch_size: 8
 validation_split: 0.8
-epochs: 3
+epochs: 80
 # to be used to test the train pipeline : will only train on a subset of the dataset
-test: True
+test: False
 
 device_conv: cuda    # "cuda" or "cpu"
   
@@ -36,6 +39,8 @@ use_tensorboard: True
 # may induce runtime overhead if set too high
 tensorboard_profile_batch: 50
 
+load_pretrained_model : True
+pretrained_model_path : /root/jreymond/lensless_ml/outputs/2023-05-10/07-02-20/tensorflow/checkpoints/
 
 use_crop: True
 
@@ -55,7 +60,7 @@ loss:
     additive_factor: "" #-0.05
   lpips:
     # either vgg or alex
-    model: alex
+    model: vgg
     weight: 1.6
     # either "" or number: additive factor to update the weight of the loss
     additive_factor: "" #0.05
@@ -65,7 +70,7 @@ metric:
    # static weight: used when computing metric, useful to know global loss to store best model
     weight: 1
   lpips:
-    model: alex
+    model: vgg
     weight: 1.2
 
 lr_reducer:
@@ -88,8 +93,10 @@ lr_reducer:
 
 discriminator:
   optimizer:
-    identifier: "adam"
-    learning_rate: 0.0001
+    args:
+      identifier: "adam"
+      learning_rate: 0.0001
+    
     use_lr_reducer: True
 
     lr_reducer:

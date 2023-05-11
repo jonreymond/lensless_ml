@@ -7,7 +7,6 @@ from onnx_tf.backend import prepare
 import tensorflow as tf
 
 
-
 def to_tf_graph(torch_model, sample_input, store_output):
     torch_model.eval()
 
@@ -18,6 +17,7 @@ def to_tf_graph(torch_model, sample_input, store_output):
                   f = store_output,   # where to save the model (can be a file or file-like object)
                   export_params = True,        # store the trained parameter weights inside the model file
                   opset_version=10,          # the ONNX version to export the model to
+                  verbose=True,
                   do_constant_folding=True,  # whether to execute constant folding for optimization
                   input_names = ['input1', 'input2'],   # the model's input names
                   output_names = ['output'], # the model's output names

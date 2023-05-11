@@ -234,6 +234,7 @@ MAX_UINT16_VAL = 2**16 -1
 class PhlatnetDataGenerator(DataGenerator):
     'Generates data for Keras'
     def __init__(self, dataset_config, indexes, batch_size=8, seed=1, use_crop=True, gaussian_noise=0, greyscale=False):
+        self.use_cropped_dataset = dataset_config['use_cropped_dataset']
 
         super().__init__(dataset_config, indexes, batch_size=8, seed=1)
         if greyscale:
@@ -242,6 +243,7 @@ class PhlatnetDataGenerator(DataGenerator):
         self.gaussian_noise = gaussian_noise
         self.crop = use_crop
         self.use_padding = dataset_config['padding']
+        
 
         self.rotate_measurements = skimage.transform.SimilarityTransform(rotation=0.00174) if dataset_config['rotate_measurements'] else None
 
@@ -276,18 +278,29 @@ class PhlatnetDataGenerator(DataGenerator):
     def _get_filenames(self):
         # if self.data_conf['mode'] == 'test':
         #     raise NotImplementedError
-
-        dir_x = os.path.join(self.data_conf['path'], self.data_conf['measure_folder'])
-        dir_y = os.path.join(self.data_conf['path'], self.data_conf['truth_folder'])
-
-        x_filenames = sorted(glob.glob(dir_x + '/*/*'), key=lambda f: os.path.basename(f).replace('.png','').replace('.', ''))
-        y_filenames = sorted(glob.glob(dir_y + '/*/*'), key=lambda f: os.path.basename(f).replace('.JPEG',''))
+        if not self.use_cropped_dataset:
+            dir_x = os.path.join(self.data_conf['path'], self.data_conf['measure_folder'])
+            x_filenames = sorted(glob.glob(dir_x + '/*/*'), key=lambda f: os.path.basename(f).replace('.png','').replace('.', ''))
+            x_names = [os.path.basename(f).replace('.png','').replace('.', '') for f in x_filenames]
+        else:
+            dir_x = os.path.join(self.data_conf['path'], self.data_conf['measure_cropped_folder'])
+            x_filenames = sorted(glob.glob(dir_x + '/*/*'), key=lambda f: os.path.basename(f).replace('.npy',''))
+            x_names = [os.path.basename(f).replace('.npy','') for f in x_filenames]
         
-        x_names = [os.path.basename(f).replace('.png','').replace('.', '') for f in x_filenames]
+        dir_y = os.path.join(self.data_conf['path'], self.data_conf['truth_folder'])
+        y_filenames = sorted(glob.glob(dir_y + '/*/*'), key=lambda f: os.path.basename(f).replace('.JPEG',''))
         y_names = [os.path.basename(f).replace('.JPEG','') for f in y_filenames]
 
+        print(len(set(x_names).symmetric_difference(set(y_names))))
+        print(len(y_names), len(x_names))
+        if not x_names == y_names:
+            print('some of the samples do not match : list(groundtruths) != list(measurements), ',
+                  'x length:', len(x_names), 'y length:', len(y_names), 
+                  'diff length:', len(set(x_names).symmetric_difference(set(y_names))))
+            y_filenames = [f for f in y_filenames if os.path.basename(f).replace('.JPEG','') in x_names]
 
-        assert x_names == y_names, 'some of the samples do not match : list(groundtruths) != list(measurements)'
+            y_names = [os.path.basename(f).replace('.JPEG','') for f in y_filenames]
+            assert x_names == y_names, 'some of the samples do not match : list(groundtruths) != list(measurements), '
 
         return np.asarray(x_filenames), np.asarray(y_filenames)
     
@@ -308,15 +321,17 @@ class PhlatnetDataGenerator(DataGenerator):
     def _get_x(self, filename):
         # -1 :return the loaded image as is (with alpha channel, otherwise it gets cropped) 
         # read as uint16, channel last
-        img = extract_bayer_raw(filename)
+        if not self.use_cropped_dataset:
+            img = extract_bayer_raw(filename)
 
-        if self.rotate_measurements:
-            img = skimage.transform.warp(img, self.rotate_measurements)            
-
-        if self.crop:
-            # Replicate padding
-            img = img[self.crop_config_x['low_h'] : self.crop_config_x['high_h'],
-                      self.crop_config_x['low_w'] : self.crop_config_x['high_w'],:]
+            if self.rotate_measurements:
+                img = skimage.transform.warp(img, self.rotate_measurements)            
+            if self.crop:
+                # Replicate padding
+                img = img[self.crop_config_x['low_h'] : self.crop_config_x['high_h'],
+                        self.crop_config_x['low_w'] : self.crop_config_x['high_w'],:]
+        else:
+            img = (np.load(filename) / MAX_UINT16_VAL).astype(np.float32)
 
         if self.use_padding:
             img = np.pad(img, self.padding, mode='edge')

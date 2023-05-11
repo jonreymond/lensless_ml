@@ -15,7 +15,9 @@ from utils import *
 
 def get_model(config, input_shape, out_shape, model_name='Reconstruction model'):
     model_config = dict(config['model'][config['model_name']])
-    input = Input(shape=input_shape, name='input')
+    # dummy_input = tf.zeros((config['batch_size'], *input_shape), dtype=tf.dtypes.float32)
+    input = Input(shape=input_shape, name='input', dtype='float32')
+    # input = Input(tensor=tf.convert_to_tensor(dummy_input), name='input', dtype='float32')
     x = input
 
     if config['use_camera_inversion']:

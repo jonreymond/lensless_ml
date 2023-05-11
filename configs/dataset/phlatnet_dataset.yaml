@@ -1,8 +1,16 @@
   
 name: 'phlatnet'
-path: '/scratch/jreymond/phlatnet_sample'
-truth_folder: 'orig_sample'
-measure_folder: 'imagenet_caps_383_12bit_Feb_19_sample'
+
+
+path: '/scratch/jreymond/phlatnet'
+truth_folder: 'orig'
+
+measure_folder: 'imagenet_caps_384_12bit_Feb_19'
+
+# if use the preprocessed dataset
+use_cropped_dataset : True
+measure_cropped_folder: measures_cropped
+
 truth_format: JPEG
 measure_format: png
 len: 323 #10000, for sample
@@ -10,7 +18,7 @@ len: 323 #10000, for sample
 mask_path : 'TODO'
 
 psf:
-  path: '/scratch/jreymond/phlatnet_sample/phase_psf/psf.npy'
+  path: /scratch/jreymond/phlatnet/phase_psf/psf.npy
   height: 1280 
   width: 1408
   crop_size_x: 1280 

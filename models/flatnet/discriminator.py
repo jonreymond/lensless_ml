@@ -68,6 +68,7 @@ def get_discriminator(shape, filters, strides, kernel_size, activation, use_grou
 
     x = Conv2D(1, kernel_size=1, padding='same', activation='sigmoid')(x) # TODO: check padding
     x = Reshape(target_shape=[])(x)
-    # x = Activation("sigmoid")(x)
+
+    x = Activation("sigmoid")(x)
     
     return Model(inputs=[input], outputs=[x], name='discriminator')

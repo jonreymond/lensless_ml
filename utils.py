@@ -91,8 +91,13 @@ def get_config_from_yaml(path):
             print(exc)
     return config
 
+# To store the resulted lpips if used in training and testing and not create 2 instances
+LPIPS_LOSS = None
 
 def get_lpips_loss(config, lpips_model):
+    global LPIPS_LOSS
+    if LPIPS_LOSS:
+        return LPIPS_LOSS
 
     if not os.path.isdir('lpips_losses'):
         os.makedirs('lpips_losses')
@@ -123,8 +128,11 @@ def get_lpips_loss(config, lpips_model):
     #                                                       )['output'])
     # else :
     lpips = lambda x, y : tf.reduce_mean(stored_lpips(input1=(x * 2 - 1), input2=(y * 2 - 1))['output'])
+    lpips = LossNamer(lpips, 'lpips')
     
-    return LossNamer(lpips, 'lpips')
+    LPIPS_LOSS = lpips
+    
+    return lpips
 
 
 

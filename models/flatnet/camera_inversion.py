@@ -13,7 +13,9 @@ from models.unet import u_net
 from utils import *
 from omegaconf import OmegaConf
 import scipy
+from scipy.io import loadmat
 from PIL import Image
+import sys
 
 
 ######################################################################
@@ -29,9 +31,9 @@ class SeparableLayer(tf.keras.layers.Layer):
         TODO
     """
     def __init__(self, W1_init, W2_init):
-        super(SeparableLayer, self).__init__()
-        self.W1 = tf.Variable(W1_init)
-        self.W2 = tf.Variable(W2_init)
+        super(SeparableLayer, self).__init__(name='separable_layer')
+        self.W1 = tf.Variable(W1_init, name='camera_inversion_W1')
+        self.W2 = tf.Variable(W2_init, name='camera_inversion_W2')
         self.activation = tf.keras.layers.LeakyReLU(alpha=0.2)
 
 
@@ -111,7 +113,7 @@ class FTLayer(tf.keras.layers.Layer):
         mask (TODO): 
     """
     def __init__(self, config, psf, mask=None):
-        super(FTLayer, self).__init__()
+        super(FTLayer, self).__init__(name='non_separable_layer')
         self.psf = psf
         self.config = config
 
@@ -119,10 +121,9 @@ class FTLayer(tf.keras.layers.Layer):
                                         gamma=config['wiener_gamma'])
         # TODO : define if better use add_weight
 
-        self.ft_layer = tf.Variable(tf.convert_to_tensor(wiener_crop))
+        self.ft_layer = tf.Variable(tf.convert_to_tensor(wiener_crop), name='camera_inversion_ft_layer')
 
-
-        self.normalizer = tf.Variable([[[[1 / 0.0008]]]], shape=(1, 1, 1, 1))
+        self.normalizer = tf.Variable([[[[1 / 0.0008]]]], shape=(1, 1, 1, 1), name='camera_inversion_normalizer')
 
         data_config = config['dataset']
         psf_config = data_config['psf']
@@ -147,7 +148,7 @@ class FTLayer(tf.keras.layers.Layer):
 
         self.ft_h, self.ft_w = ft_h, ft_w
     
-        self.mask = tf.Variable(mask) if mask else None
+        self.mask = tf.Variable(mask, name='camera_inversion_mask') if mask else None
 
 
     def build(self, input_shape):
@@ -174,7 +175,7 @@ class FTLayer(tf.keras.layers.Layer):
             h_after = x_diff - h_before
             w_before = y_diff // 2
             w_after = y_diff - w_before
-            self.pad_psf = ((h_before, h_after), (w_before, w_after))
+            self.pad_psf = ((h_before, h_after), (w_before, w_after), (0, 0))
 
             self.in_shape = input_shape
         else:
@@ -199,7 +200,6 @@ class FTLayer(tf.keras.layers.Layer):
         curr_ft_layer = self.ft_layer
 
         if self.pad_psf:
-            # print(self.pad)
             curr_ft_layer = tf.pad(curr_ft_layer, paddings=self.pad_psf, mode="CONSTANT")
 
         
@@ -274,7 +274,7 @@ def get_psf(config):
 
 def get_separable_init_matrices(config):
     if config['dataset']['name'] == 'flatnet':
-        d = scipy.io.loadmat(config['dataset']['calibrated_path'])
+        d = loadmat(config['dataset']['calibrated_path'])
         phi_l = d['P1gb']
         phi_r = d['Q1gb']
         return phi_l, phi_r
