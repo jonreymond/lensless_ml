@@ -8,9 +8,11 @@ import tensorflow as tf
 
 
 def to_tf_graph(torch_model, sample_input, store_output):
+    print('exporting torch to onnx model...')
     torch_model.eval()
 
     # torch_out = torch_model(sample_input)
+    
 
     torch.onnx.export(model = torch_model,               # model being run
                   args = sample_input,                         # model input (or a tuple for multiple inputs)
@@ -25,6 +27,7 @@ def to_tf_graph(torch_model, sample_input, store_output):
                   dynamic_axes={'input' : {0 : 'batch_size'},    # variable length axes
                                 'output' : {0 : 'batch_size'}})
     
+    print('onnx model saved to ', store_output)
     onnx_model = onnx.load(store_output)
 
     # load and change dimensions to be dynamic

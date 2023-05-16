@@ -13,7 +13,7 @@ measure_cropped_folder: measures_cropped
 
 truth_format: JPEG
 measure_format: png
-len: 323 #10000, for sample
+len: 9791 # normally 10000, but some measurements are not available
 
 mask_path : 'TODO'
 
@@ -33,8 +33,10 @@ truth_height: 384
 truth_width: 384
 truth_channels: 3
 # output of measurement after cropping
-measure_height: 1280
-measure_width: 1408
+# measure_height: 1280
+# measure_width: 1408
+measure_height: 608
+measure_width: 864
 # Bayer measurements
 measure_channels: 4
 
@@ -43,6 +45,12 @@ padding: True
 type_mask: "non_separable"
   
 rotate_measurements: False
+
+# directly use measure as output shape
+center_crop: True
+
+
+
 crop:
   # center crop where center_h: 808 and center_w : 965
   measurements: 

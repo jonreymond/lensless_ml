@@ -14,6 +14,8 @@ import cv2
 from keras.losses import MeanSquaredError
 
 from multiprocessing import Process, Queue, shared_memory, managers
+import sys
+import io
 
 
 
@@ -112,12 +114,15 @@ def get_lpips_loss(config, lpips_model):
     
     lpips_path = os.path.join('lpips_losses', get_lpips_name())
 
-    if not os.path.isfile(lpips_path + '.pb'):
+    if not os.path.exists(lpips_path + '.pb'):
+        print('creating lpips loss...')
         lpips_loss = LPIPS(net=lpips_model)#.cuda()
         #change to satisfy with torch order : first channels
         sample_input = (torch.randn(config['batch_size'], *shape, requires_grad=False),#.cuda(),
                         torch.randn(config['batch_size'], *shape, requires_grad=False))#.cuda())
         to_tf_graph(lpips_loss, sample_input, lpips_path)
+    else:
+        print('lpips loss already exists in memory, loading it...')
 
     stored_lpips = tf.keras.models.load_model(lpips_path + '.pb')
     
@@ -225,6 +230,19 @@ class ShmArray(np.ndarray):
         if obj is None: return
         self.shm = getattr(obj, 'shm', None)
 
+
+
+
+
+
+
+class Tee(io.TextIOBase):
+    def __init__(self, *writers):
+        self.writers = writers
+
+    def write(self, data):
+        for writer in self.writers:
+            writer.write(data)
 
 
 

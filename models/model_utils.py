@@ -4,20 +4,34 @@ from models.flatnet.gan import *
 from models.flatnet.discriminator import *
 from keras.callbacks import ReduceLROnPlateau, LearningRateScheduler
 from custom_callbacks import *
+from keras import Model
+
+from keras_unet_collection import models as M_unet
 
 from utils import *
 
 
+class ReconstructionModel(Model):
+    def __init__(self, output_shape, unet_args, camera_inversion_args=None, model_name='reconstruction model'):
+        super().__init__(name=model_name)
+        self.unet_args = unet_args
+        self.camera_inversion_args = camera_inversion_args
+        self.output_shape = output_shape
 
 
+    def call(self, inputs):
+        if self.camera_inversion_args:
+            inputs = get_camera_inversion_layer(inputs, self.camera_inversion_args, mask=None)
+
+        return u_net(inputs, **self.unet_args, out_shape=self.output_shape)
 
     
 
+
 def get_model(config, input_shape, out_shape, model_name='Reconstruction model'):
     model_config = dict(config['model'][config['model_name']])
-    # dummy_input = tf.zeros((config['batch_size'], *input_shape), dtype=tf.dtypes.float32)
     input = Input(shape=input_shape, name='input', dtype='float32')
-    # input = Input(tensor=tf.convert_to_tensor(dummy_input), name='input', dtype='float32')
+
     x = input
 
     if config['use_camera_inversion']:
@@ -27,10 +41,65 @@ def get_model(config, input_shape, out_shape, model_name='Reconstruction model')
         model_config.pop('type')
         x = u_net(input=x, **model_config, out_shape=out_shape)
         
+    elif model_config['type'] == 'unet_plus':
+        model_config.pop('type')
+        x = experimental_models(input=x, 
+                      model_args=model_config['args'], 
+                      out_shape=out_shape, 
+                      model_name=config['model_name'])
     else:
         raise ValueError(f'Unknown model type: {model_config["type"]}')
     
     return Model(inputs=[input], outputs=[x], name=model_name)
+
+
+
+
+EXPERIMENTAL_MODELS = dict(unet_2d = M_unet.unet_2d,
+                           vnet_2d = M_unet.vnet_2d,
+                           unet_plus_2d = M_unet.unet_plus_2d,
+                           r2_unet_2d = M_unet.r2_unet_2d,
+                           att_unet_2d = M_unet.att_unet_2d,
+                           resunet_a_2d = M_unet.resunet_a_2d,
+                           u2net_2d = M_unet.u2net_2d,
+                           unet_3plus_2d = M_unet.unet_3plus_2d,
+                           transunet_2d = M_unet.transunet_2d,
+                           swin_unet_2d = M_unet.swin_unet_2d)
+
+def resize_input(dim, unet_depth):
+    while dim % unet_depth != 0:
+        dim += 1
+    return dim
+
+def experimental_models(input, model_args, out_shape, model_name):
+    model_args = dict(model_args)
+
+    _, num_channels, height, width = input.shape
+    print('num_channels', num_channels)
+    print('height', height)
+    print('width', width)
+    x = to_channel_last(input)
+    unet_depth = len(model_args['filter_num'])
+    new_height = resize_input(height, unet_depth)
+    new_width = resize_input(width, unet_depth)
+    print('new_height', new_height)
+    print('new_width', new_width)
+
+    x = tf.keras.layers.Resizing(new_height, new_width)(x)
+    
+    model_args['n_labels'] = num_channels
+    model_args['input_size'] = (new_height, new_width, num_channels)
+    model_args['name'] = model_name
+    
+    gen_model = EXPERIMENTAL_MODELS[model_name](**model_args)
+    gen_model.summary()
+
+    x = gen_model(x)
+    print(out_shape)
+    x = tf.keras.layers.Resizing(height=out_shape[1], width=out_shape[2])(x)
+    output = to_channel_first(x)
+    return output
+
 
 
 def get_metrics(config):

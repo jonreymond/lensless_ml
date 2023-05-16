@@ -1,5 +1,5 @@
 name: wallerlab
-path: /scratch/bezzam/DiffuserCam_mirflickr/dataset
+path: /scratch/DiffuserCam
 
 type_mask: "non_separable"
 
@@ -33,7 +33,7 @@ crop:
     size_w: 380
 
 psf:
-  path: /scratch/jreymond/wallerlab/psf.tiff
+  path: /scratch/DiffuserCam/psf.tiff
   height: 1080 
   width: 1920
   crop_size_x: 1080 

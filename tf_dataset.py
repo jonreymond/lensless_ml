@@ -34,10 +34,15 @@ class DataLoader(ABC):
         # def map_func(feature_path):
         #     feature = np.load(feature_path)
         #     return feature
-        data_measure = Dataset.from_tensor_slices(self.x_filenames)
+        data_measure = Dataset.from_tensor_slices(self.x_filenames).cache()
         data_measure = self._map_x(data_measure)
+        # data_measure = data_measure.interleave(self._map_x,
+        #                                        cycle_length=36, num_parallel_calls=tf.data.AUTOTUNE,
+        #                                        deterministic=False)
 
-        data_truth = Dataset.from_tensor_slices(self.y_filenames)
+        
+
+        data_truth = Dataset.from_tensor_slices(self.y_filenames).cache()
         data_truth = self._map_y(data_truth)
         # .map(lambda item: tf.numpy_function(np.load, [item], tf.float32))
         # load ground truth
@@ -183,18 +188,22 @@ class WallerlabDaloader(DataLoader):
     
     
     def _map_x(self, data_measure):
-        data_measure = data_measure.map(lambda item: tf.numpy_function(np_load, [item], tf.float32))
+        data_measure = data_measure.map(lambda item: tf.numpy_function(np_load, [item], tf.float32), 
+                                        num_parallel_calls=tf.data.AUTOTUNE)
         if self.greyscale:
-            data_measure = data_measure.map(lambda item : tf.py_function(tf_rgb2gray, [item], tf.float32))
-        return data_measure.map(lambda item: tf.transpose(item, perm=[2, 0, 1]))
+            data_measure = data_measure.map(lambda item : tf.py_function(tf_rgb2gray, [item], tf.float32), 
+                                            num_parallel_calls=tf.data.AUTOTUNE)
+        return data_measure.map(lambda item: tf.transpose(item, perm=[2, 0, 1]), 
+                                num_parallel_calls=tf.data.AUTOTUNE)
 
     
     def _map_y(self, data_truth):
-        data_truth = self._map_x(data_truth)
+        data_truth = self._map_x(data_truth,)
         if self.crop:
             data_truth = data_truth.map(lambda item: item[:, 
                                                           self.crop['low_h']: self.crop['high_h'],
-                                                        self.crop['low_w']: self.crop['high_w']])
+                                                        self.crop['low_w']: self.crop['high_w']],
+                                                        num_parallel_calls=tf.data.AUTOTUNE)
         return data_truth
     
 

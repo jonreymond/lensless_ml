@@ -46,6 +46,7 @@ measure_channels: 4
 
 rotate_measurements: True
 
+center_crop : False
 
 type_mask: "separable"
 

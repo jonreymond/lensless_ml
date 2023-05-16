@@ -19,7 +19,6 @@ class DataGenerator(ABC, keras.utils.Sequence):
         # extract filenames
         x_filenames, y_filenames = self._get_filenames()
 
-
         self.x_filenames = x_filenames[indexes]
         self.y_filenames = y_filenames[indexes]
 
@@ -66,7 +65,7 @@ class DataGenerator(ABC, keras.utils.Sequence):
         np.random.shuffle(self.indexes)
 
 
-    def get_samples(self, num_samples, shuffle=True):
+    def get_samples(self, num_samples, shuffle=True, verbose=False):
         """Return num_samples pairs
 
         Args:
@@ -85,7 +84,7 @@ class DataGenerator(ABC, keras.utils.Sequence):
         Y = np.empty((num_samples, *self.out_dim), dtype=np.float32)
 
         for i, batch_idx in enumerate(sample_indexes):
-            print(self.x_filenames[batch_idx])
+            if verbose : print(self.x_filenames[batch_idx])
             X[i,] = self._get_x(self.x_filenames[batch_idx])
             Y[i,] = self._get_y(self.y_filenames[batch_idx])
 
@@ -236,18 +235,30 @@ class PhlatnetDataGenerator(DataGenerator):
     def __init__(self, dataset_config, indexes, batch_size=8, seed=1, use_crop=True, gaussian_noise=0, greyscale=False):
         self.use_cropped_dataset = dataset_config['use_cropped_dataset']
 
-        super().__init__(dataset_config, indexes, batch_size=8, seed=1)
+        super().__init__(dataset_config, indexes, batch_size=batch_size, seed=seed)
         if greyscale:
             raise NotImplementedError('greyscale not implemented yet for phlatnet dataset')
         
         self.gaussian_noise = gaussian_noise
         self.crop = use_crop
         self.use_padding = dataset_config['padding']
-        
+        self.center_crop = None
+        if dataset_config['center_crop']:
+            # self.cropper =  def center_crop(img, h_crop, w_crop):
+            #     h, w, _ = img.shape
+            #     h_start = h // 2 - h_crop // 2
+            #     w_start = w // 2 - w_crop // 2
+            #     return img[h_start : h_start + h_crop, 
+            #             w_start : w_start + w_crop, :]
+            c, h, w = self.input_shape
+            h_start = h // 2 - self.center_crop // 2
+            
 
+            
         self.rotate_measurements = skimage.transform.SimilarityTransform(rotation=0.00174) if dataset_config['rotate_measurements'] else None
 
         if use_crop:
+
                 # ts: 
         # low_h: 168 
         # high_h: 1448
@@ -300,6 +311,7 @@ class PhlatnetDataGenerator(DataGenerator):
             y_filenames = [f for f in y_filenames if os.path.basename(f).replace('.JPEG','') in x_names]
 
             y_names = [os.path.basename(f).replace('.JPEG','') for f in y_filenames]
+            print('final length:'  , len(y_names))
             assert x_names == y_names, 'some of the samples do not match : list(groundtruths) != list(measurements), '
 
         return np.asarray(x_filenames), np.asarray(y_filenames)
@@ -332,6 +344,8 @@ class PhlatnetDataGenerator(DataGenerator):
                         self.crop_config_x['low_w'] : self.crop_config_x['high_w'],:]
         else:
             img = (np.load(filename) / MAX_UINT16_VAL).astype(np.float32)
+            # if self.center_crop:
+                
 
         if self.use_padding:
             img = np.pad(img, self.padding, mode='edge')
@@ -342,9 +356,11 @@ class PhlatnetDataGenerator(DataGenerator):
         img = (img - 0.5) * 2
         img += np.random.normal(size=img.shape, scale=self.gaussian_noise)
         return img 
+        
+
     
     def to_plottable_measurement(self, x):
-        x = x/2 + 1
+        # x = x/2 + 1
         red = x[0]
         green = (x[1] + x[2]) /2.0
         blue = x[3]
@@ -368,6 +384,14 @@ def extract_bayer_raw(filename):
     # tform = skimage.transform.SimilarityTransform(rotation=0.00174)
     # im1=skimage.transform.warp(im1,tform)
     return img
+
+
+def center_crop(img, h_crop, w_crop):
+    h, w, _ = img.shape
+    h_start = h // 2 - h_crop // 2
+    w_start = w // 2 - w_crop // 2
+    return img[h_start : h_start + h_crop, 
+               w_start : w_start + w_crop, :]
         
 
 

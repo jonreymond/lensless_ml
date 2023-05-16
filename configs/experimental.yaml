@@ -1,0 +1,140 @@
+defaults:
+  # - dataset: flatnet_dataset
+  # - dataset: phlatnet_dataset
+  - dataset : wallerlab_dataset
+  
+  - model: default_models
+  - _self_
+#will load specs of wallerlab_unet in default_models
+# model_name: unet128
+# model_name: wallerlab_unet
+model_name: att_unet_2d
+
+# camera inversion
+use_camera_inversion: False
+use_psf_init: True
+wiener_gamma: 50000
+
+# Quantization Aware Training
+use_QAT: False
+
+# GAN
+use_discriminator: False
+
+workers: 32
+# queue_max_size: 32
+
+batch_size: 8
+#validation set percentage
+validation_split: 0.2
+epochs: 100
+# to be used to test the train pipeline : will only train on a subset of the dataset
+test: False
+
+device_conv: cuda    # "cuda" or "cpu", not yet implemented for cpu
+  
+greyscale: False
+
+save: True
+
+use_tensorboard: True
+# to get the number of batches processed by tensorboard in each epoch for runtime analysis
+# may induce runtime overhead if set too high
+tensorboard_profile_batch: 10
+
+load_pretrained_model : False
+# flatnet
+# pretrained_model_path : /root/jreymond/lensless_ml/outputs/2023-05-10/07-02-20/tensorflow/checkpoints/
+# phlatnet
+pretrained_model_path : /root/jreymond/lensless_ml/outputs/2023-05-11/13-46-31/tensorflow/checkpoints/
+
+use_crop: True
+
+seed: 1   # Note : will not result in a deterministic output if use cuda device
+
+
+optimizer:
+  # name of optimizer technique desired
+  identifier: "adam"
+  learning_rate: 0.001
+
+
+loss:
+  mse:
+    weight: 1
+    # either "" or number: additive factor to update the weight of the loss
+    additive_factor: "" #-0.05
+  lpips:
+    # either vgg or alex
+    model: vgg
+    weight: 1.2
+    # either "" or number: additive factor to update the weight of the loss
+    additive_factor: "" #0.05
+  
+metric:
+  mse:
+   # static weight: used when computing metric, useful to know global loss to store best model
+    weight: 1
+  lpips:
+    model: vgg
+    weight: 1.2
+
+lr_reducer:
+  # either None if no rl_reducer callback, or reduce_lr_on_plateau, or learning_rate_scheduler
+  type: reduce_lr_on_plateau
+
+  reduce_lr_on_plateau:
+    monitor: 'val_total'
+    factor: 0.5
+    patience: 4
+    # 6e-8
+    min_lr: 0.00000006
+    verbose: 1
+
+  learning_rate_scheduler:
+    scheduler: "TODO : define function def scheduler(epoch, lr): returning updated lr"
+    verbose: 1
+
+
+
+discriminator:
+  optimizer:
+    args:
+      identifier: "adam"
+      learning_rate: 0.001
+    
+    use_lr_reducer: True
+
+    lr_reducer:
+      type: reduce_lr_on_plateau
+      reduce_lr_on_plateau:
+        monitor: 'val_total'
+        factor: 0.5
+        patience: 4
+        # 6e-8
+        min_lr: 0.00000006
+        verbose: 1
+      learning_rate_scheduler:
+        scheduler: "TODO : define function def scheduler(epoch, lr): returning updated lr"
+        verbose: 1
+
+  weight: 0.6
+  model:
+    filters:     [64, 128, 128, 256]
+    strides:     [1,  2,   1,   1]
+    kernel_size: [3,  3,   3,   3]
+    activation: "swish"
+    # else will use batchnorm
+    use_groupnorm: False
+    #num for groupnorm
+    num_groups: 4
+
+# load pretrained model
+load_pretrained: False
+pretrained_path: "pretrained_models"
+
+
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}/tensorflow
