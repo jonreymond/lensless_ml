@@ -121,6 +121,7 @@ def get_lpips_loss(config, lpips_model):
         sample_input = (torch.randn(config['batch_size'], *shape, requires_grad=False),#.cuda(),
                         torch.randn(config['batch_size'], *shape, requires_grad=False))#.cuda())
         to_tf_graph(lpips_loss, sample_input, lpips_path)
+
     else:
         print('lpips loss already exists in memory, loading it...')
 
@@ -208,8 +209,26 @@ def get_loss_from_name(name_id, loss_config, config=None):
         return MeanSquaredError(name='mse')
     elif name_id == 'lpips':
         return get_lpips_loss(config, loss_config['model'])
+    elif name_id == 'ssim':
+        return LossNamer(ssim, 'ssim')
+    elif name_id == 'psnr':
+        return LossNamer(psnr, 'psnr')
     else:
         raise NotImplementedError('loss not implemented')
+    
+def ssim(x, y):
+    # rescale from [-1, 1] to [0, 1] + NHWC format
+    x = (tf.transpose(x, perm=[0, 2, 3, 1]) + 1) / 2
+    y = (tf.transpose(y, perm=[0, 2, 3, 1]) + 1) / 2
+    return tf.reduce_mean(tf.image.ssim(x, y, max_val=1.0))
+
+
+def psnr(x, y):
+    # rescale from [-1, 1] to [0, 1] + NHWC format
+    x = (tf.transpose(x, perm=[0, 2, 3, 1]) + 1) / 2
+    y = (tf.transpose(y, perm=[0, 2, 3, 1]) + 1) / 2
+    return tf.reduce_mean(tf.image.psnr(x, y, max_val=1.0))
+
 
 
 

@@ -201,6 +201,8 @@ class WallerlabGenerator(DataGenerator):
         x = np.load(filename)
         if self.greyscale:
             x = rgb2gray(x)
+        # Change range to [-1, 1] range
+        x = (x - 0.5) * 2
         # to channel first
         return x.transpose((2, 0, 1))
     
@@ -243,13 +245,14 @@ class PhlatnetDataGenerator(DataGenerator):
         self.crop = use_crop
         self.use_padding = dataset_config['padding']
         self.center_crop = None
-        if dataset_config['center_crop']:
+        if dataset_config['center_crop'] and not self.use_cropped_dataset:
             # self.cropper =  def center_crop(img, h_crop, w_crop):
             #     h, w, _ = img.shape
             #     h_start = h // 2 - h_crop // 2
             #     w_start = w // 2 - w_crop // 2
             #     return img[h_start : h_start + h_crop, 
             #             w_start : w_start + w_crop, :]
+            # TODO : correct input_shape, don't know if terminated??
             c, h, w = self.input_shape
             h_start = h // 2 - self.center_crop // 2
             

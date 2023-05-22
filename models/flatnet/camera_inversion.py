@@ -112,10 +112,13 @@ class FTLayer(tf.keras.layers.Layer):
         psf_crop (tf.Tensor) :
         mask (TODO): 
     """
-    def __init__(self, config, psf, mask=None):
-        super(FTLayer, self).__init__(name='non_separable_layer')
+    def __init__(self, config, psf, mask=None, name='non_separable_layer', activation='linear',**kwargs):
+        super(FTLayer, self).__init__(name=name, **kwargs)
         self.psf = psf
-        self.config = config
+        self.config = dict(config)
+        # self.activation = Activation(activation, name=activation)
+        self.activation = tf.keras.activations.get(activation)
+        
 
         wiener_crop = get_wiener_matrix(psf, 
                                         gamma=config['wiener_gamma'])
@@ -186,8 +189,8 @@ class FTLayer(tf.keras.layers.Layer):
         config = super().get_config()
 
         config.update({
-            "psf_cropped": self.psf,
-            "config": OmegaConf.to_object(self.config),
+            "psf": self.psf,
+            "config": self.config,
             "mask": self.mask
         })
         return config
@@ -236,8 +239,99 @@ class FTLayer(tf.keras.layers.Layer):
                         data_format='channels_first')(x)
 
         # print('x after crop', x.shape)
+        x = self.activation(x)
         return x
     
+##############################################################################################################
+##############################################################################################################
+##############################################################################################################
+##############################################################################################################
+
+import numpy as np
+from scipy import fft
+from scipy.fftpack import next_fast_len
+
+class RealFFTConvolve2D:
+    def __init__(self, psf, dtype=None, pad=True, norm="ortho", **kwargs):
+        """
+        Linear operator that performs convolution in Fourier domain, and assumes
+        real-valued signals.
+        Parameters
+        ----------
+        psf :py:class:`~numpy.ndarray` or :py:class:`~torch.Tensor`
+            2D filter to use.
+        dtype : float32 or float64
+            Data type to use for optimization.
+        """
+
+        # prepare shapes for reconstruction
+        # Depth, HWC
+        # 0: depth
+        # 1: width
+        # 2: height
+        # 3 : channel
+        # [0, 1, 2, 3]
+
+        height, width, channel = psf.shape
+        depth = 1
+
+        # cropping / padding indexes
+        self._padded_shape = 2 * [width, height] - 1
+        self._padded_shape = np.array([next_fast_len(i) for i in self._padded_shape])
+        self._padded_shape = list(
+            np.r_[depth, self._padded_shape, channel]
+        )
+        self._start_idx = (self._padded_shape[-3:-1] - [width, height]) // 2
+        self._end_idx = self._start_idx + [width, height]
+        self.pad = pad  # Whether necessary to pad provided data
+
+        # precompute filter in frequency domain
+        self._H = torch.fft.rfft2(
+            self._pad(self._psf), norm=norm, dim=(-3, -2), s=self._padded_shape[-3:-1]
+        )
+        self._Hadj = torch.conj(self._H)
+        self._padded_data = torch.zeros(size=self._padded_shape)
+
+
+
+    def _crop(self, x):
+        return x[:, 
+                 self._start_idx[0] : self._end_idx[0], 
+                 self._start_idx[1] : self._end_idx[1]]
+
+
+    def _pad(self, v):
+        vpad = torch.zeros(size=self._padded_shape)
+
+        vpad[:, 
+             self._start_idx[0] : self._end_idx[0], 
+             self._start_idx[1] : self._end_idx[1]] = v
+        return vpad
+
+
+    def convolve(self, x):
+        """
+        Convolve with pre-computed FFT of provided PSF.
+        """
+        if self.pad:
+            self._padded_data[
+                :, self._start_idx[0] : self._end_idx[0], self._start_idx[1] : self._end_idx[1]
+            ] = x
+        else:
+            self._padded_data[:] = x
+
+        conv_output = torch.fft.ifftshift(
+            torch.fft.irfft2(
+                torch.fft.rfft2(self._padded_data, dim=(-3, -2)) * self._H, dim=(-3, -2)
+            ),
+            dim=(-3, -2),
+        )
+
+        if self.pad:
+            return self._crop(conv_output)
+        else:
+            return conv_output
+
 
 ##############################################################################################################
 ##############################################################################################################
@@ -283,15 +377,20 @@ def get_separable_init_matrices(config):
 
 
 
-def get_camera_inversion_layer(input, config, mask=None):
+def get_camera_inversion_layer(config, mask=None):
     if config['dataset']['type_mask'] == 'separable':
         phi_l, phi_r = get_separable_init_matrices(config)
 
-        x = SeparableLayer(phi_l.T, phi_r)(input)
+        return SeparableLayer(phi_l.T, phi_r)
         
     else :
         psf = get_psf(config) if config['use_psf_init'] else None
-        x = FTLayer(config, psf=psf, mask=mask)(input)
-    return x
+        return FTLayer(config, psf=psf, mask=mask)
+
+
+
+##############################################################################################################
+##############################################################################################################
+##############################################################################################################
 
 

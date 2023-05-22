@@ -8,15 +8,15 @@ defaults:
 #will load specs of wallerlab_unet in default_models
 # model_name: unet128
 # model_name: wallerlab_unet
-model_name: unet32
+model_name: unet64
 
 # camera inversion
-use_camera_inversion: False
+use_camera_inversion: True
 use_psf_init: True
 wiener_gamma: 50000
 
 # Quantization Aware Training
-use_QAT: False
+use_QAT: True
 
 # GAN
 use_discriminator: False
@@ -42,11 +42,11 @@ use_tensorboard: True
 # may induce runtime overhead if set too high
 tensorboard_profile_batch: 50
 
-load_pretrained_model : False
+load_pretrained : True
 # flatnet
 # pretrained_model_path : /root/jreymond/lensless_ml/outputs/2023-05-10/07-02-20/tensorflow/checkpoints/
 # phlatnet
-pretrained_model_path : /root/jreymond/lensless_ml/outputs/2023-05-11/13-46-31/tensorflow/checkpoints/
+pretrained_path : /root/jreymond/lensless_ml/outputs/2023-05-15/12-14-26/tensorflow/checkpoints/
 
 use_crop: True
 
@@ -78,6 +78,10 @@ metric:
   lpips:
     model: vgg
     weight: 1.2
+  psnr:
+    weight: 0
+  ssim:
+    weight: 0
 
 lr_reducer:
   # either None if no rl_reducer callback, or reduce_lr_on_plateau, or learning_rate_scheduler
@@ -129,9 +133,6 @@ discriminator:
     #num for groupnorm
     num_groups: 4
 
-# load pretrained model
-load_pretrained: False
-pretrained_path: "pretrained_models"
 
 
 

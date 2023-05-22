@@ -11,8 +11,7 @@ def to_tf_graph(torch_model, sample_input, store_output):
     print('exporting torch to onnx model...')
     torch_model.eval()
 
-    # torch_out = torch_model(sample_input)
-    
+    # torch_out = torch_model(sample_input)    
 
     torch.onnx.export(model = torch_model,               # model being run
                   args = sample_input,                         # model input (or a tuple for multiple inputs)

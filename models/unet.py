@@ -6,6 +6,7 @@ from keras.layers import BatchNormalization, UpSampling2D, Concatenate, Input, C
 
 from keras.models import Model
 import tensorflow as tf
+
 from utils import *
 
 
@@ -100,7 +101,8 @@ def u_net(input, enc_filters, name='unet', last_conv_filter=None, num_dec_conv=2
     # TODO : check if input.shape[1] == input_shape[0]
     num_outputs = 3 if input.shape[1] != 1 else 1
 
-    x = Conv2D(filters=num_outputs, kernel_size=1, use_bias=True, padding='same')(x)
+    # tanh activation for [-1, 1] output
+    x = Conv2D(filters=num_outputs, kernel_size=1, use_bias=True, padding='same', activation='tanh')(x)
 
     if out_shape:
         # Exact resizing without trainable parameters
