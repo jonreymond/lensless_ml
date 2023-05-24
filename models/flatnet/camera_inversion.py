@@ -13,9 +13,12 @@ from models.unet import u_net
 from utils import *
 from omegaconf import OmegaConf
 import scipy
+from scipy import fft
+from scipy.fftpack import next_fast_len
 from scipy.io import loadmat
 from PIL import Image
 import sys
+
 
 
 ######################################################################
@@ -61,24 +64,24 @@ class SeparableLayer(tf.keras.layers.Layer):
 ############################## non-separable ##############################
 ###########################################################################
 
-@tf.function
-def fft_conv2d(x, kernel):
-    """ Computes the convolution in the frequency domain given
-    Expects input and kernel already in frequency domain
+# @tf.function
+# def fft_conv2d(x, kernel):
+#     """ Computes the convolution in the frequency domain given
+#     Expects input and kernel already in frequency domain
 
-    Args:
-        x (tensor): shape (B, C, H, W)
-        kernel (tensor): shape (H, W, C)
-    """
-    kernel = tf.transpose(kernel, (2, 0, 1))
+#     Args:
+#         x (tensor): shape (B, C, H, W)
+#         kernel (tensor): shape (H, W, C)
+#     """
+#     kernel = tf.transpose(kernel, (2, 0, 1))
 
-    x = tf.signal.rfft2d(x)
-    kernel = tf.signal.rfft2d(kernel)
+#     x = tf.signal.rfft2d(x)
+#     kernel = tf.signal.rfft2d(kernel)
     
-    mult0 = x * kernel
+#     mult0 = x * kernel
 
-    result = tf.signal.irfft2d(mult0)
-    return result
+#     result = tf.signal.irfft2d(mult0)
+#     return result
 
 
 def get_wiener_matrix(psf, gamma: int = 20000):
@@ -104,233 +107,243 @@ def get_wiener_matrix(psf, gamma: int = 20000):
 
 
 
+# class FTLayer(tf.keras.layers.Layer):
+#     """Layer used for the trainable inversion in FlatNet for the non-separable case
+
+#     Args:
+#         config (dict) :
+#         psf_crop (tf.Tensor) :
+#         mask (TODO): 
+#     """
+#     def __init__(self, config, psf, mask=None, name='non_separable_layer', activation='linear',**kwargs):
+#         super(FTLayer, self).__init__(name=name, **kwargs)
+#         self.psf = psf
+#         self.config = dict(config)
+#         # self.activation = Activation(activation, name=activation)
+#         self.activation = tf.keras.activations.get(activation)
+        
+
+#         wiener_crop = get_wiener_matrix(psf, 
+#                                         gamma=config['wiener_gamma'])
+#         # TODO : define if better use add_weight
+
+#         self.ft_layer = tf.Variable(tf.convert_to_tensor(wiener_crop), name='camera_inversion_ft_layer')
+
+#         self.normalizer = tf.Variable([[[[1 / 0.0008]]]], shape=(1, 1, 1, 1), name='camera_inversion_normalizer')
+
+#         data_config = config['dataset']
+#         psf_config = data_config['psf']
+#         self.pad_x = (psf_config['height'] - psf_config['crop_size_x']) // 2
+#         self.pad_y = (psf_config['width'] - psf_config['crop_size_y']) // 2
+
+
+#         ft_test = tf.zeros(self.ft_layer.shape)
+#         ft_test = tf.pad(ft_test, ((self.pad_y, self.pad_y), (self.pad_x, self.pad_x), (0, 0)), "CONSTANT")
+#         for axis in range(2):
+#             ft_test = tf.roll(ft_test, axis=axis, shift=-(ft_test.shape[axis] // 2))
+
+#         ft_h, ft_w, _ = ft_test.shape
+
+#         img_h = data_config['truth_height']
+#         img_w = data_config['truth_width']
+#         self.low_crop_h = ft_h // 2 - img_h // 2    
+#         self.high_crop_h = ft_h // 2 + img_h // 2  
+
+#         self.low_crop_w = ft_w // 2 - img_w // 2    
+#         self.high_crop_w = ft_w // 2 + img_w // 2  
+
+#         self.ft_h, self.ft_w = ft_h, ft_w
+    
+#         self.mask = tf.Variable(mask, name='camera_inversion_mask') if mask else None
+
+
+#     def build(self, input_shape):
+#         _, c, h, w = input_shape
+#         # here pad psf to match input shape
+#         self.pad_input = None
+#         self.pad_psf = None
+        
+#         if (h - self.ft_h) < 0 and (w - self.ft_w) < 0:
+#             # need to pad input
+#             x_diff = self.ft_h - h
+#             y_diff = self.ft_w - w
+#             h_before = x_diff // 2
+#             h_after = x_diff - h_before
+#             w_before = y_diff // 2
+#             w_after = y_diff - w_before
+#             self.pad_input = ((h_before, h_after), (w_before, w_after))
+
+#         elif (h - self.ft_h) >= 0 and (w - self.ft_w) >= 0:
+#             # need to pad psf
+#             x_diff = h - self.ft_h
+#             y_diff = w - self.ft_w
+#             h_before = x_diff // 2
+#             h_after = x_diff - h_before
+#             w_before = y_diff // 2
+#             w_after = y_diff - w_before
+#             self.pad_psf = ((h_before, h_after), (w_before, w_after), (0, 0))
+
+#             self.in_shape = input_shape
+#         else:
+#             raise NotImplementedError('Need to pad PSF and input')
+#         return
+    
+#     def get_config(self):
+#         config = super().get_config()
+
+#         config.update({
+#             "psf": self.psf,
+#             "config": self.config,
+#             "mask": self.mask
+#         })
+#         return config
+      
+
+#     def call(self, x):
+#         if self.pad_input:
+#             x = ZeroPadding2D(padding=self.pad_input)(x)
+
+#         curr_ft_layer = self.ft_layer
+
+#         if self.pad_psf:
+#             curr_ft_layer = tf.pad(curr_ft_layer, paddings=self.pad_psf, mode="CONSTANT")
+
+        
+#         for axis in range(2):
+#             curr_ft_layer = tf.roll(curr_ft_layer, axis=axis, shift=-(curr_ft_layer.shape[axis] // 2))
+
+#         # print('ft_shape', curr_ft_layer.shape)
+#         # print('ft layer after:', ft_layer.shape)
+#         # print(ft_layer.shape)
+#         # TODO : change # channels 
+#         # ft_layer = tf.reshape(ft_layer, (1, 1, self.ft_h, self.ft_w))
+#         # ft_layer =  Reshape((self.ft_h, self.ft_w, 1))(ft_layer)
+#         # sys.exit()
+
+#         # to range [0, 1]
+#         x = 0.5 * x + 0.5
+
+#         if self.mask:
+#             x = x * self.mask
+
+#         # x = ZeroPadding2D(padding=self.pad_input)(x)
+
+#         x = fft_conv2d(x, curr_ft_layer) * self.normalizer
+
+#         # Centre Crop
+#         # print('x before crop', x.shape)
+#         # x = x[  :, :, 
+#         #         self.low_crop_h : self.high_crop_h,
+#         #         self.low_crop_w : self.high_crop_w]
+#         # print('x before crop', x.shape)
+
+#         x = Cropping2D(cropping=((self.low_crop_h, x.shape[2] - self.high_crop_h),
+#                                   (self.low_crop_w, x.shape[3] - self.high_crop_w)),
+#                         data_format='channels_first')(x)
+
+#         # print('x after crop', x.shape)
+#         x = self.activation(x)
+#         return x
+    
+
+
+
 class FTLayer(tf.keras.layers.Layer):
     """Layer used for the trainable inversion in FlatNet for the non-separable case
 
     Args:
         config (dict) :
         psf_crop (tf.Tensor) :
-        mask (TODO): 
     """
-    def __init__(self, config, psf, mask=None, name='non_separable_layer', activation='linear',**kwargs):
-        super(FTLayer, self).__init__(name=name, **kwargs)
+    def __init__(self, psf, activation='linear', gamma=20000, pad=True, train_ft=False, **kwargs):
+        super(FTLayer, self).__init__(name='non_separable_layer', **kwargs)
         self.psf = psf
-        self.config = dict(config)
-        # self.activation = Activation(activation, name=activation)
+        self.pad = pad
         self.activation = tf.keras.activations.get(activation)
+        self.train_ft = train_ft
+        self.gamma = gamma
+
+        # pad values
+        height, width, channel = psf.shape
+        self.psf_shape = psf.shape
+        print('psf shape', psf.shape)
+        img_shape = np.asarray([height, width])
+        self._padded_shape = 2 * img_shape - 1
+        self._padded_shape = np.array([next_fast_len(i) for i in self._padded_shape])
+        self._padded_shape = list(np.r_[self._padded_shape, channel])
+
+        self._start_idx = (self._padded_shape[0 : 1] - img_shape) // 2
+        self._end_idx = self._start_idx + img_shape
+
+        wiener_crop = tf.convert_to_tensor(get_wiener_matrix(psf, gamma=self.gamma))
+        wiener_crop = tf.transpose(wiener_crop, (2, 0, 1))
         
+        if train_ft:
+            wiener_crop = self._to_ft(wiener_crop)
 
-        wiener_crop = get_wiener_matrix(psf, 
-                                        gamma=config['wiener_gamma'])
-        # TODO : define if better use add_weight
+        self.W = tf.Variable(wiener_crop, name='camera_inversion_W')
 
-        self.ft_layer = tf.Variable(tf.convert_to_tensor(wiener_crop), name='camera_inversion_ft_layer')
-
-        self.normalizer = tf.Variable([[[[1 / 0.0008]]]], shape=(1, 1, 1, 1), name='camera_inversion_normalizer')
-
-        data_config = config['dataset']
-        psf_config = data_config['psf']
-        self.pad_x = (psf_config['height'] - psf_config['crop_size_x']) // 2
-        self.pad_y = (psf_config['width'] - psf_config['crop_size_y']) // 2
-
-
-        ft_test = tf.zeros(self.ft_layer.shape)
-        ft_test = tf.pad(ft_test, ((self.pad_y, self.pad_y), (self.pad_x, self.pad_x), (0, 0)), "CONSTANT")
-        for axis in range(2):
-            ft_test = tf.roll(ft_test, axis=axis, shift=-(ft_test.shape[axis] // 2))
-
-        ft_h, ft_w, _ = ft_test.shape
-
-        img_h = data_config['truth_height']
-        img_w = data_config['truth_width']
-        self.low_crop_h = ft_h // 2 - img_h // 2    
-        self.high_crop_h = ft_h // 2 + img_h // 2  
-
-        self.low_crop_w = ft_w // 2 - img_w // 2    
-        self.high_crop_w = ft_w // 2 + img_w // 2  
-
-        self.ft_h, self.ft_w = ft_h, ft_w
-    
-        self.mask = tf.Variable(mask, name='camera_inversion_mask') if mask else None
-
+        self.normalizer = tf.Variable([[[[1 / 0.0008]]]], shape=(1, 1, 1, 1), name='camera_inversion_normalizer') 
 
     def build(self, input_shape):
-        _, c, h, w = input_shape
-        # here pad psf to match input shape
-        self.pad_input = None
-        self.pad_psf = None
+        if self.psf_shape != input_shape:
+            print('input shape different from psf shape: ', input_shape, self.psf_shape)
+            print('padding input')
+            psf_img_shape = np.asarray(self.psf_shape[:2])
+            # TODO
+            
+
         
-        if (h - self.ft_h) < 0 and (w - self.ft_w) < 0:
-            # need to pad input
-            x_diff = self.ft_h - h
-            y_diff = self.ft_w - w
-            h_before = x_diff // 2
-            h_after = x_diff - h_before
-            w_before = y_diff // 2
-            w_after = y_diff - w_before
-            self.pad_input = ((h_before, h_after), (w_before, w_after))
-
-        elif (h - self.ft_h) >= 0 and (w - self.ft_w) >= 0:
-            # need to pad psf
-            x_diff = h - self.ft_h
-            y_diff = w - self.ft_w
-            h_before = x_diff // 2
-            h_after = x_diff - h_before
-            w_before = y_diff // 2
-            w_after = y_diff - w_before
-            self.pad_psf = ((h_before, h_after), (w_before, w_after), (0, 0))
-
-            self.in_shape = input_shape
-        else:
-            raise NotImplementedError('Need to pad PSF and input')
-        return
     
     def get_config(self):
         config = super().get_config()
 
         config.update({
             "psf": self.psf,
-            "config": self.config,
-            "mask": self.mask
+            "activation": self.activation,
+            "pad": self.pad,
+            "train_ft": self.train_ft,
+            "gamma": self.gamma
         })
         return config
       
 
+    def _to_ft(self, w):
+        print('w1', w.shape)
+        if self.pad:
+            w = tf.pad(w, ((0,0),
+                           (self._start_idx[0], self._end_idx[0]),
+                           (self._start_idx[1], self._end_idx[1])), "CONSTANT")
+            print('w2', w.shape)
+        return tf.signal.rfft2d(w)
+
+
     def call(self, x):
-        if self.pad_input:
-            x = ZeroPadding2D(padding=self.pad_input)(x)
-
-        curr_ft_layer = self.ft_layer
-
-        if self.pad_psf:
-            curr_ft_layer = tf.pad(curr_ft_layer, paddings=self.pad_psf, mode="CONSTANT")
+        if self.pad:
+            print('x1', x.shape)
+            x = ZeroPadding2D(((self._start_idx[0], self._end_idx[0]),
+                              (self._start_idx[1], self._end_idx[1])))(x)
+            print('x2', x.shape)
 
         
-        for axis in range(2):
-            curr_ft_layer = tf.roll(curr_ft_layer, axis=axis, shift=-(curr_ft_layer.shape[axis] // 2))
+        W = self.W if self.train_ft else self._to_ft(self.W)
 
-        # print('ft_shape', curr_ft_layer.shape)
-        # print('ft layer after:', ft_layer.shape)
-        # print(ft_layer.shape)
-        # TODO : change # channels 
-        # ft_layer = tf.reshape(ft_layer, (1, 1, self.ft_h, self.ft_w))
-        # ft_layer =  Reshape((self.ft_h, self.ft_w, 1))(ft_layer)
-        # sys.exit()
+        print(W.shape)
+        print(x.shape)
+        mult = tf.signal.rfft2d(x) * W
 
-        # to range [0, 1]
-        x = 0.5 * x + 0.5
+        x = tf.signal.ifftshift(tf.signal.irfft2d(mult),
+                                axes=(-2, -1))
+        
+        if self.pad:
+            x = Cropping2D(cropping=((self._start_idx[0], self._end_idx[0]),
+                                     (self._start_idx[1], self._end_idx[1])),
+                                     data_format='channels_first')(x)
 
-        if self.mask:
-            x = x * self.mask
+        x = x * self.normalizer
 
-        # x = ZeroPadding2D(padding=self.pad_input)(x)
-
-        x = fft_conv2d(x, curr_ft_layer) * self.normalizer
-
-        # Centre Crop
-        # print('x before crop', x.shape)
-        # x = x[  :, :, 
-        #         self.low_crop_h : self.high_crop_h,
-        #         self.low_crop_w : self.high_crop_w]
-        # print('x before crop', x.shape)
-
-        x = Cropping2D(cropping=((self.low_crop_h, x.shape[2] - self.high_crop_h),
-                                  (self.low_crop_w, x.shape[3] - self.high_crop_w)),
-                        data_format='channels_first')(x)
-
-        # print('x after crop', x.shape)
-        x = self.activation(x)
-        return x
+        return self.activation(x)
     
-##############################################################################################################
-##############################################################################################################
-##############################################################################################################
-##############################################################################################################
-
-import numpy as np
-from scipy import fft
-from scipy.fftpack import next_fast_len
-
-class RealFFTConvolve2D:
-    def __init__(self, psf, dtype=None, pad=True, norm="ortho", **kwargs):
-        """
-        Linear operator that performs convolution in Fourier domain, and assumes
-        real-valued signals.
-        Parameters
-        ----------
-        psf :py:class:`~numpy.ndarray` or :py:class:`~torch.Tensor`
-            2D filter to use.
-        dtype : float32 or float64
-            Data type to use for optimization.
-        """
-
-        # prepare shapes for reconstruction
-        # Depth, HWC
-        # 0: depth
-        # 1: width
-        # 2: height
-        # 3 : channel
-        # [0, 1, 2, 3]
-
-        height, width, channel = psf.shape
-        depth = 1
-
-        # cropping / padding indexes
-        self._padded_shape = 2 * [width, height] - 1
-        self._padded_shape = np.array([next_fast_len(i) for i in self._padded_shape])
-        self._padded_shape = list(
-            np.r_[depth, self._padded_shape, channel]
-        )
-        self._start_idx = (self._padded_shape[-3:-1] - [width, height]) // 2
-        self._end_idx = self._start_idx + [width, height]
-        self.pad = pad  # Whether necessary to pad provided data
-
-        # precompute filter in frequency domain
-        self._H = torch.fft.rfft2(
-            self._pad(self._psf), norm=norm, dim=(-3, -2), s=self._padded_shape[-3:-1]
-        )
-        self._Hadj = torch.conj(self._H)
-        self._padded_data = torch.zeros(size=self._padded_shape)
-
-
-
-    def _crop(self, x):
-        return x[:, 
-                 self._start_idx[0] : self._end_idx[0], 
-                 self._start_idx[1] : self._end_idx[1]]
-
-
-    def _pad(self, v):
-        vpad = torch.zeros(size=self._padded_shape)
-
-        vpad[:, 
-             self._start_idx[0] : self._end_idx[0], 
-             self._start_idx[1] : self._end_idx[1]] = v
-        return vpad
-
-
-    def convolve(self, x):
-        """
-        Convolve with pre-computed FFT of provided PSF.
-        """
-        if self.pad:
-            self._padded_data[
-                :, self._start_idx[0] : self._end_idx[0], self._start_idx[1] : self._end_idx[1]
-            ] = x
-        else:
-            self._padded_data[:] = x
-
-        conv_output = torch.fft.ifftshift(
-            torch.fft.irfft2(
-                torch.fft.rfft2(self._padded_data, dim=(-3, -2)) * self._H, dim=(-3, -2)
-            ),
-            dim=(-3, -2),
-        )
-
-        if self.pad:
-            return self._crop(conv_output)
-        else:
-            return conv_output
 
 
 ##############################################################################################################
@@ -341,23 +354,14 @@ class RealFFTConvolve2D:
 MAX_UINT8_VAL = 2**8 -1
 
 
-def get_psf(config):
-    data_config = config['dataset']
+def get_psf(data_config):
     psf_config = data_config['psf']
     if data_config['name'] == 'wallerlab':
         psf = (np.array(Image.open(psf_config['path'])) / MAX_UINT16_VAL).astype('float32')
-        return rgb2gray(psf) if config['greyscale'] else psf
+        return psf
     
     elif data_config['name'] == 'phlatnet':
-        
-        psf = extract_bayer(np.load(psf_config['path']))
-        # Crop
-        crop_top = psf_config['centre_x'] - psf_config['crop_size_x'] // 2
-        crop_bottom = psf_config['centre_x'] + psf_config['crop_size_x'] // 2
-        crop_left = psf_config['centre_y'] - psf_config['crop_size_y'] // 2
-        crop_right = psf_config['centre_y'] + psf_config['crop_size_y'] // 2
-
-        psf_crop = psf[crop_top:crop_bottom, crop_left:crop_right]
+        psf_crop = np.load(psf_config['path'])
         return psf_crop
     
     elif data_config['name'] == 'flatnet':
@@ -367,8 +371,8 @@ def get_psf(config):
 
 
 def get_separable_init_matrices(config):
-    if config['dataset']['name'] == 'flatnet':
-        d = loadmat(config['dataset']['calibrated_path'])
+    if config['name'] == 'flatnet':
+        d = loadmat(config['calibrated_path'])
         phi_l = d['P1gb']
         phi_r = d['Q1gb']
         return phi_l, phi_r
@@ -377,15 +381,22 @@ def get_separable_init_matrices(config):
 
 
 
-def get_camera_inversion_layer(config, mask=None):
-    if config['dataset']['type_mask'] == 'separable':
-        phi_l, phi_r = get_separable_init_matrices(config)
+def get_camera_inversion_layer(data_config, camera_inversion_args=None):
+    if camera_inversion_args['use_random_init']:
+        raise NotImplementedError('Random init not implemented yet')
+    
+    camera_inversion_args = dict(camera_inversion_args)
+    camera_inversion_args.pop('use_psf_init')
+
+    if data_config['type_mask'] == 'separable':
+        phi_l, phi_r = get_separable_init_matrices(data_config)
 
         return SeparableLayer(phi_l.T, phi_r)
         
     else :
-        psf = get_psf(config) if config['use_psf_init'] else None
-        return FTLayer(config, psf=psf, mask=mask)
+        psf = get_psf(data_config)
+        # TODO : add rgb2gray
+        return FTLayer(**camera_inversion_args, psf=psf)
 
 
 

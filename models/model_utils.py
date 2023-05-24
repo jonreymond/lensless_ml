@@ -14,6 +14,47 @@ from keras_unet_collection import models as M_unet
 from utils import *
 
 
+class ReconstructionModel2(Model):
+    def __init__(self, input_shape, perceptual_model, camera_inversion_layer=None, name='reconstruction_model'):
+        super().__init__(name=name)
+        # self.unet_args = unet_args
+        self.in_shape = input_shape
+        self.camera_inversion_layer = camera_inversion_layer
+        
+        self.perceptual_model = perceptual_model
+
+
+    def call(self, inputs):
+        if self.camera_inversion_layer:
+            inputs = self.camera_inversion_layer(inputs)
+
+        return self.perceptual_model(inputs)
+    
+    def summary(self, **kwargs):
+        cam_model = None
+        if self.camera_inversion_layer:
+            inp = Input(shape=self.in_shape, name='input', dtype='float32')
+
+            print(inp.shape)
+            out = self.camera_inversion_layer(inp)
+            cam_model = Model(inputs=[inp], outputs=[out])
+            cam_model.summary(**kwargs)
+        self.perceptual_model.summary(**kwargs)
+
+        if cam_model:
+            model = keras.Sequential([cam_model, self.perceptual_model])
+            line_length = 98
+            print("=" * line_length)
+            trainable_count = count_params(model.trainable_weights)
+            non_trainable_count = count_params(model.non_trainable_weights)
+
+            print(f"Total params: {trainable_count + non_trainable_count:,}")
+            print(f"Trainable params: {trainable_count:,}")
+            print(f"Non-trainable params: {non_trainable_count:,}")
+            print("_" * line_length)
+
+
+
 class ReconstructionModel(Model):
     def __init__(self, input_shape, output_shape, unet_args, camera_inversion_args=None, model_name='reconstruction_model'):
         super().__init__(name=model_name)
@@ -279,6 +320,7 @@ def get_callbacks(model, store_folder, checkpoint_path, dynamic_weights, config)
     
     callbacks = [model_checkpoint]
     if dynamic_weights:
+        print('Using dynamic weights')
         callbacks.append(ChangeLossWeights(dynamic_weights))
 
     if config['lr_reducer']['type']:
@@ -290,14 +332,21 @@ def get_callbacks(model, store_folder, checkpoint_path, dynamic_weights, config)
         else:
             raise ValueError(reducer_args['type'] + " type is not supported, must be either 'reduce_lr_on_plateau' or 'learning_rate_scheduler'")
         
-    if config['use_discriminator'] and config['discriminator']['optimizer']['use_lr_reducer']:
-        reducer_args = config['discriminator']['optimizer']['lr_reducer']
-        if reducer_args['type'] == "reduce_lr_on_plateau":
-            callbacks.append(ReduceLROnPlateauCustom(model.d_optimizer, **reducer_args['reduce_lr_on_plateau']))
-        elif reducer_args['type'] == "learning_rate_scheduler":
-            callbacks.append(LearningRateSchedulerCustom(model.d_optimizer, **reducer_args['learning_rate_scheduler']))
-        else:
-            raise ValueError(reducer_args['type'] + " type is not supported, must be either 'reduce_lr_on_plateau' or 'learning_rate_scheduler'")
+    if config['use_discriminator']:
+        assert not (config['discriminator']['optimizer']['use_lr_reducer'] and config['discriminator']['optimizer']['copy_gen_lr']), 'Cannot use both lr reducer and copy gen lr' 
+        if config['discriminator']['optimizer']['use_lr_reducer']:
+            print('Using discriminator lr reducer')
+            reducer_args = config['discriminator']['optimizer']['lr_reducer']
+            if reducer_args['type'] == "reduce_lr_on_plateau":
+                callbacks.append(ReduceLROnPlateauCustom(model.d_optimizer, **reducer_args['reduce_lr_on_plateau']))
+            elif reducer_args['type'] == "learning_rate_scheduler":
+                callbacks.append(LearningRateSchedulerCustom(model.d_optimizer, **reducer_args['learning_rate_scheduler']))
+            else:
+                raise ValueError(reducer_args['type'] + " type is not supported, must be either 'reduce_lr_on_plateau' or 'learning_rate_scheduler'")
+        elif config['discriminator']['optimizer']['copy_gen_lr']:
+            print('Using discriminator lr copy')
+            callbacks.append(CopyLearningRate(model.d_optimizer, model.optimizer))
+            
 
 
     if config['use_tensorboard']:

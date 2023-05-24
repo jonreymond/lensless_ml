@@ -9,7 +9,8 @@ measure_folder: 'imagenet_caps_384_12bit_Feb_19'
 
 # if use the preprocessed dataset
 use_cropped_dataset : True
-measure_cropped_folder: measures_cropped
+# measure_cropped_folder: measures_cropped
+measure_cropped_folder: measures_full_cropped
 
 truth_format: JPEG
 measure_format: png
@@ -18,7 +19,8 @@ len: 9791 # normally 10000, but some measurements are not available
 mask_path : 'TODO'
 
 psf:
-  path: /scratch/jreymond/phlatnet/phase_psf/psf.npy
+  path_raw: /scratch/jreymond/phlatnet/phase_psf/psf.npy
+  path: /scratch/jreymond/phlatnet/phase_psf/psf_cropped.npy
   height: 1280 
   width: 1408
   crop_size_x: 1280 
@@ -40,7 +42,7 @@ measure_width: 864
 # Bayer measurements
 measure_channels: 4
 
-padding: True
+padding: False
 
 type_mask: "non_separable"
   

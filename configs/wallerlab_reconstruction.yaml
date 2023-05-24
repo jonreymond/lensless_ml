@@ -1,7 +1,7 @@
 defaults:
   # - dataset: flatnet_dataset
-  # - dataset: phlatnet_dataset
-  - dataset : wallerlab_dataset
+  - dataset: phlatnet_dataset
+  # - dataset : wallerlab_dataset
   
   - model: default_models
   - _self_
@@ -12,16 +12,26 @@ model_name: unet64
 
 # camera inversion
 use_camera_inversion: True
-use_psf_init: True
-wiener_gamma: 50000
+random_init: False
+camera_inversion_args:
+  separable: None
+
+  non_separable: 
+    activation: linear
+    gamma: 20000
+    pad: False
+    train_ft: False
+
+  
+
 
 # Quantization Aware Training
-use_QAT: True
+use_QAT: False
 
 # GAN
-use_discriminator: False
+use_discriminator: True
 
-workers: 32
+workers: 16
 # queue_max_size: 32
 
 batch_size: 8
@@ -29,7 +39,7 @@ batch_size: 8
 validation_split: 0.2
 epochs: 100
 # to be used to test the train pipeline : will only train on a subset of the dataset
-test: False
+test: True
 
 device_conv: cuda    # "cuda" or "cpu", not yet implemented for cpu
   
@@ -42,7 +52,7 @@ use_tensorboard: True
 # may induce runtime overhead if set too high
 tensorboard_profile_batch: 50
 
-load_pretrained : True
+load_pretrained : False
 # flatnet
 # pretrained_model_path : /root/jreymond/lensless_ml/outputs/2023-05-10/07-02-20/tensorflow/checkpoints/
 # phlatnet
@@ -107,16 +117,19 @@ discriminator:
       identifier: "adam"
       learning_rate: 0.001
     
-    use_lr_reducer: True
+    # Will have the same learning rate as the generator optimizer
+    copy_gen_lr: True
+    use_lr_reducer: False
 
     lr_reducer:
       type: reduce_lr_on_plateau
+      
       reduce_lr_on_plateau:
         monitor: 'val_total'
         factor: 0.5
         patience: 4
-        # 6e-8
-        min_lr: 0.00000006
+        # 1e-7
+        min_lr: 0.0000001
         verbose: 1
       learning_rate_scheduler:
         scheduler: "TODO : define function def scheduler(epoch, lr): returning updated lr"
@@ -127,7 +140,7 @@ discriminator:
     filters:     [64, 128, 128, 256]
     strides:     [1,  2,   1,   1]
     kernel_size: [3,  3,   3,   3]
-    activation: "swish"
+    activation: #"swish"
     # else will use batchnorm
     use_groupnorm: False
     #num for groupnorm

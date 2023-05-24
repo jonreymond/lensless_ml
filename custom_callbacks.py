@@ -253,3 +253,16 @@ class LearningRateSchedulerCustom(Callback):
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
         logs["lr"] = backend.get_value(self.optimizer.lr)
+
+
+
+class CopyLearningRate(Callback):
+    def __init__(self, optimizer_listener, optimizer_target):
+        super().__init__()
+        self.optimizer_listener = optimizer_listener
+        self.optimizer_target = optimizer_target
+
+    def on_epoch_begin(self, epoch, logs=None):
+        backend.set_value(self.optimizer_listener.lr, float(backend.get_value(self.optimizer_target.lr)))
+        
+        

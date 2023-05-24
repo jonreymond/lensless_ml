@@ -1,7 +1,7 @@
-# import setGPU
+import setGPU
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-from utils import *
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+# from utils import *
 import hydra
 
 from dataset import get_dataset
@@ -95,7 +95,7 @@ def main(config):
             dataset_config = config['dataset']
             indexes = np.arange(dataset_config['len'])
             if config['test']:
-                indexes = indexes[:1000]
+                indexes = indexes[:500]
 
             train_indexes, val_indexes = train_test_split(indexes, 
                                                         test_size=config['validation_split'], 
@@ -148,18 +148,44 @@ def main(config):
             output_shape = get_shape(dataset_config, measure=False, greyscale=config['greyscale'])
 
 
-            # gen_model = get_model(config=config, input_shape=in_shape, out_shape=out_shape, model_name='the_model')
 
+
+            input = Input(shape=input_shape, name='input', dtype='float32')
+            # camera inversion layer #
+            camera_inversion_layer = None
+            if config['use_camera_inversion']:
+                # Separable dataset
+                if dataset_config['type_mask'] == 'separable':
+                    if config['random_init']:
+                        raise NotImplementedError('Random init not implemented for separable dataset')
+                    else:
+                        assert dataset_config['name'] == 'flatnet', 'Only flatnet dataset is supported for separable dataset'
+                        phi_l, phi_r = get_separable_init_matrices(dataset_config)
+                    camera_inversion_layer = SeparableLayer(phi_l, phi_r)
+                # Non separable dataset
+                else:
+                    if config['random_init']:
+                        raise NotImplementedError('Random init not implemented for non separable dataset')
+                    else:
+                        psf = get_psf(dataset_config)
+                    camera_inversion_layer = FTLayer(psf=psf, **config['camera_inversion_args']['non_separable'])
+
+
+            if camera_inversion_layer:
+                input = camera_inversion_layer(input)
+                
             model_config = dict(config['model'][config['model_name']])
-            camera_inversion_args = config if config['use_camera_inversion'] else None
             model_config.pop('type')
-
-            gen_model = ReconstructionModel(input_shape = input_shape, 
-                                            output_shape = output_shape, 
-                                            unet_args = model_config, 
-                                            camera_inversion_args = camera_inversion_args,
-                                            # model_name='reconstruction model'
-                                            )
+            # TODO : add experimental support for other models
+            perceptual_model = Model(inputs=[input],
+                                     outputs=[u_net(input=input, **model_config, out_shape=output_shape)],
+                                     name='perceptual_model')
+            
+            gen_model = ReconstructionModel2(input_shape=input_shape, 
+                                            # output_shape=output_shape, 
+                                            camera_inversion_layer=camera_inversion_layer,
+                                            perceptual_model=perceptual_model)
+            
             
 
             gen_model.build((None, *input_shape))
@@ -170,23 +196,6 @@ def main(config):
 
             
             if config['use_QAT']:
-                # model = tfmot.quantization.keras.quantize_annotate_model(
-                #     tf.keras.Sequential([
-                # tfmot.quantization.keras.quantize_annotate_layer(gen_model.camera_inversion_layer, DefaultDenseQuantizeConfig())
-                # ]))
-
-                # # `quantize_apply` requires mentioning `DefaultDenseQuantizeConfig` with `quantize_scope`
-                # # as well as the custom Keras layer.
-                # with tfmot.quantization.keras.quantize_scope(
-                # {'DefaultDenseQuantizeConfig': DefaultDenseQuantizeConfig,
-                # 'CustomLayer': CustomLayer}):
-                # # Use `quantize_apply` to actually make the model quantization aware.
-                # quant_aware_model = tfmot.quantization.keras.quantize_apply(model)
-                
-
-                
-                # gen_model = tfmot.quantization.keras.quantize_model(gen_model)
-                # a = quantize_annotate_layer(gen_model.camera_inversion_layer)
 
                 model = tf.keras.Sequential([quantize_annotate_layer(gen_model.camera_inversion_layer, FTLayerQuantizeConfig()),
                                              quantize_annotate_model(gen_model.perceptual_model)])
@@ -211,8 +220,6 @@ def main(config):
                 print(d_model.summary())
                 adv_weight = config['discriminator']['weight']
                 discr_args = dict(model=d_model, optimizer=d_optimizer, adv_weight=adv_weight)
-
-
 
 
             model = compile_model(gen_model=gen_model, 

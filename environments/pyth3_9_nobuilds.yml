@@ -167,7 +167,7 @@ dependencies:
     - scikit-image==0.19.0rc0
     - scikit-learn==1.2.2
     - scipy==1.10.1
-    - setgpu==0.0.8
+    - setgpu
     - sklearn==0.0.post1
     - snowballstemmer==2.2.0
     - sortedcontainers==2.4.0

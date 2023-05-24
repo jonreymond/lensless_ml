@@ -1,7 +1,7 @@
 #wallerlab
 wallerlab_unet:
   type: unet
-  bn_eps: 0.0001
+  # bn_eps: 0.0001
   num_dec_conv: 3
   enc_filters : [24, 64, 128, 256, 512]
 
@@ -21,4 +21,187 @@ unet128:
   type: unet
   enc_filters : [128, 256, 512, 1024]
   last_conv_filter: 12
+
+######################################
+###### Experimental models ###########
+######################################
+# names : 
+# 1.  vnet_2d
+# 2.  att_unet_2d
+# 3.  unet_plus_2d
+# 4.  unet_3plus_2d
+# 5.  r2_unet_2d
+# 6.  resunet_a_2d
+# 7.  u2net_2d
+# 8.  transunet_2d
+# 9.  swin_unet_2d
+
+vnet_2d:
+  type: unet_plus
+  args:
+    filter_num: [16, 32, 64, 128, 256]
+    # for 3 colors rgb
+    # n_labels: 3
+    res_num_ini: 1 
+    res_num_max: 3
+    stack_num_down: 2
+    stack_num_up: 2
+    activation: "ReLU" # PReLU
+    output_activation: tanh
+    batch_norm: true
+    pool: false # downsampling with a convolutional layer instead of maxpooling
+    unpool: "bilinear"
+
+
+att_unet_2d:
+  type: unet_plus
+  args:
+    filter_num: [64, 128, 256, 512]
+    # for 3 colors rgb
+    # n_labels: 3
+    stack_num_down: 2
+    stack_num_up: 2
+    activation: "ReLU"
+    atten_activation: "ReLU"
+    attention: "add"
+    output_activation: tanh
+    batch_norm: true
+    pool: false # downsampling with a convolutional layer instead of maxpooling
+    unpool: "bilinear"
+    # backbone: 'VGG16'
+    # weights: 'imagenet'
+
+
+unet_plus_2d:
+  type: unet_plus
+  args:
+    filter_num: [64, 128, 256, 512]
+    # for 3 colors rgb
+    # n_labels: 3
+    stack_num_down: 2
+    stack_num_up: 2
+    activation: "ReLU"
+    output_activation: tanh
+    batch_norm: true
+    pool: false # downsampling with a convolutional layer instead of maxpooling
+    unpool: "bilinear"
+    deep_supervision: true
+
+
+unet_3plus_2d:
+  type: unet_plus
+  args:
+    filter_num: [64, 128, 256, 512]
+    # for 3 colors rgb
+    # n_labels: 3
+    filter_num_skip: 'auto'
+    filter_num_aggregate: 'auto'
+    stack_num_down: 2
+    stack_num_up: 2
+    activation: "ReLU"
+    output_activation: tanh
+    batch_norm: true
+    pool: false # downsampling with a convolutional layer instead of maxpooling
+    unpool: "bilinear"
+    deep_supervision: true
+
+
+r2_unet_2d:
+  type: unet_plus
+  args:
+    filter_num: [64, 128, 256, 512]
+    # for 3 colors rgb
+    # n_labels: 3
+    stack_num_down: 2
+    stack_num_up: 2
+    activation: "ReLU"
+    output_activation: tanh
+    batch_norm: true
+    pool: false # downsampling with a convolutional layer instead of maxpooling
+    unpool: "bilinear"
+    recur_num: 2
+    deep_supervision: true
+
+
+resunet_a_2d:
+  type: unet_plus
+  args:
+    filter_num: [32, 64, 128, 256, 512, 1024]
+    dilation_num: [1, 3, 15, 31]
+    aspp_num_down: 256
+    aspp_num_up: 128
+    # for 3 colors rgb
+    # n_labels: 3
+    # stack_num_down: 2
+    # stack_num_up: 2
+    activation: "ReLU"
+    output_activation: tanh
+    batch_norm: true
+    pool: false # downsampling with a convolutional layer instead of maxpooling
+    unpool: "bilinear"
+    res_num: 1
+    # deep_supervision: true
+
+u2net_2d:
+  type: unet_plus
+  args:
+    filter_num: [64, 128, 256, 512]
+    # for 3 colors rgb
+    # n_labels: 3
+    # stack_num_down: 2
+    # stack_num_up: 2
+    filter_num_up: [64, 64, 128, 256] 
+    filter_mid_num_down: [32, 32, 64, 128]
+    filter_mid_num_up: [16, 32, 64, 128]
+    filter_4f_num: [512, 512]
+    filter_4f_mid_num: [256, 256]
+    activation: "ReLU"
+    output_activation: null
+    batch_norm: true
+    pool: false # downsampling with a convolutional layer instead of maxpooling
+    unpool: "bilinear"
+    deep_supervision: true
+    # backbone: 'VGG16'
+    # weights: 'imagenet'
+
+
+transunet_2d:
+  type: unet_plus
+  args:
+    filter_num: [64, 128, 256, 512]
+
+    stack_num_down: 2
+    stack_num_up: 2
+    embed_dim: 768
+    num_mlp: 3072
+    num_heads: 12
+    num_transformer: 12
+    activation: 'ReLU'
+    mlp_activation: 'GELU'
+    output_activation: tanh,
+    batch_norm: True
+    pool: True #maxpool
+    unpool: 'bilinear'
+    name: 'transunet'
+
+swin_unet_2d:
+  type: unet_plus
+  args:
+    filter_num_begin: 64
+    n_labels: 3
+    depth: 4
+    stack_num_down: 2
+    stack_num_up: 2
+    patch_size: [2, 2]
+    num_heads: [4, 8, 8, 8]
+    window_size: [4, 2, 2, 2]
+    num_mlp: 512
+    output_activation: tanh
+    shift_window: True
+    name: 'swin_unet'
+
+
+
+
+
 
