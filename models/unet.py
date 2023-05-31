@@ -33,7 +33,7 @@ def conv_block(x, filters, kernel_size, strides=1, bn_eps=1e-3, l1_factor=0, l2_
                 )(x)
 
     # axis=1 for NCHW
-    x = BatchNormalization(epsilon=bn_eps, axis=1)(x)
+    x = BatchNormalization(epsilon=bn_eps)(x)
     x = Activation('relu')(x)
     return x
 
@@ -55,7 +55,7 @@ def stack_decoder(x, filters, down_tensor, kernel_size=3, bilinear=True, bn_eps=
         # x = Resizing(height, width,interpolation='bilinear')(x)
         # x = to_channel_first(x)
         x = UpSampling2D(size=2, interpolation="bilinear")(x)
-        x = ZeroPadding2D(((0, down_tensor.shape[2] - x.shape[2]), (0, down_tensor.shape[3] - x.shape[3])))(x)
+        x = ZeroPadding2D(((0, down_tensor.shape[1] - x.shape[1]), (0, down_tensor.shape[2] - x.shape[2])))(x)
 
     else:
         raise NotImplementedError
@@ -63,8 +63,8 @@ def stack_decoder(x, filters, down_tensor, kernel_size=3, bilinear=True, bn_eps=
         # x = Conv2DTranspose(filters, kernel_size=2, strides=2, padding='same')(x)
         # y = tf.keras.layers.Cropping2D(cropping=((2, 2), (4, 4)))(x)
 
-
-    x = Concatenate(axis=1)([x, down_tensor])
+    # Concatenate in NHWC
+    x = Concatenate(axis=-1)([x, down_tensor])
     # decode : TODO : normally only 2
     for i in range(num_conv):
         x = conv_block(x, filters, kernel_size, bn_eps=bn_eps)
@@ -73,7 +73,7 @@ def stack_decoder(x, filters, down_tensor, kernel_size=3, bilinear=True, bn_eps=
 
 
 
-def u_net(input, enc_filters, name='unet', last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3, out_shape=None):
+def u_net(input, enc_filters, last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3, out_shape=None):
     x = input
     ### down: encoder ###
 
@@ -82,10 +82,8 @@ def u_net(input, enc_filters, name='unet', last_conv_filter=None, num_dec_conv=2
         x, down_tensor = stack_encoder(x, enc_filter, kernel_size=3, bn_eps=bn_eps)
         down_tensors.append(down_tensor)
     
-
     ### Center ###
-    x = conv_block(x, filters=enc_filters[-1], kernel_size=3, bn_eps=bn_eps)
-    
+    x = conv_block(x, filters=enc_filters[-1], kernel_size=3, bn_eps=bn_eps) 
 
     ### up: decoder ###
     down_tensors = down_tensors[::-1]
@@ -106,11 +104,12 @@ def u_net(input, enc_filters, name='unet', last_conv_filter=None, num_dec_conv=2
 
     if out_shape:
         # Exact resizing without trainable parameters
-        x = to_channel_last(x)
+        # x = to_channel_last(x)
         # works, but not quantized
-        x = Lambda(lambda x: tf.image.resize(x, size=out_shape[1:3], method=tf.image.ResizeMethod.BILINEAR))(x)
+        size = out_shape[0:2]
+        x = Lambda(lambda x: tf.image.resize(x, size=size, method=tf.image.ResizeMethod.BILINEAR))(x)
         # x = tf.keras.layers.Resizing(height=out_shape[1], width=out_shape[2], interpolation='bilinear')(x)
-        x = to_channel_first(x)
+        # x = to_channel_first(x)
 
         # for QAT, need to 
 

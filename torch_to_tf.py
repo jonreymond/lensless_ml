@@ -1,7 +1,7 @@
 import torch
 import onnx
 import os
-import onnxsim
+# import onnxsim
 # from torch.utils.tensorboard import SummaryWriter
 from onnx_tf.backend import prepare
 import tensorflow as tf

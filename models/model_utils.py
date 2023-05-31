@@ -1,7 +1,7 @@
 from models.unet import *
-from models.flatnet.camera_inversion import *
-from models.flatnet.gan import *
-from models.flatnet.discriminator import *
+from models.camera_inversion import *
+from models.gan import *
+from models.discriminator import *
 from keras.callbacks import ReduceLROnPlateau, LearningRateScheduler
 from custom_callbacks import *
 from keras import Model
@@ -13,6 +13,40 @@ from keras_unet_collection import models as M_unet
 
 from utils import *
 
+from tensorflow_model_optimization.quantization.keras.quantizers import MovingAverageQuantizer, LastValueQuantizer
+from tensorflow_model_optimization.quantization.keras import QuantizeConfig
+
+
+
+
+class DistributedLossCombiner(Loss):
+    def __init__(self, losses, loss_weights=None, name='total', global_batch_size=None, **kwargs):
+        self.losses = losses
+        self.loss_weights = loss_weights
+        self.global_batch_size = global_batch_size
+        super().__init__(name=name, reduction=tf.keras.losses.Reduction.NONE, **kwargs)
+
+    def call(self, y_true, y_pred):
+        per_sample_loss = tf.add_n([weight * loss(y_true, y_pred) for weight, loss in zip(self.loss_weights, self.losses)])
+        loss = tf.nn.compute_average_loss(per_sample_loss, global_batch_size=self.global_batch_size)
+        # if model_losses:
+        #     loss += tf.nn.scale_regularization_loss(tf.add_n(model_losses))
+        return loss
+
+
+class DistributedLoss(Loss):
+    def __init__(self, loss, name, global_batch_size, **kwargs):
+        self.loss = loss
+        self.global_batch_size = global_batch_size
+        super().__init__(name=name, reduction=tf.keras.losses.Reduction.NONE, **kwargs)
+        
+    
+    def call(self, y_true, y_pred):
+        per_sample_loss = self.loss(y_true, y_pred)
+        loss = tf.nn.compute_average_loss(per_sample_loss, global_batch_size=self.global_batch_size)
+        # if model_losses:
+        #     loss += tf.nn.scale_regularization_loss(tf.add_n(model_losses))
+        return loss
 
 class ReconstructionModel2(Model):
     def __init__(self, input_shape, perceptual_model, camera_inversion_layer=None, name='reconstruction_model'):
@@ -130,50 +164,49 @@ def get_model(config, input_shape, out_shape, model_name='Reconstruction model')
 
 
 
-EXPERIMENTAL_MODELS = dict(unet_2d = M_unet.unet_2d,
-                           vnet_2d = M_unet.vnet_2d,
-                           unet_plus_2d = M_unet.unet_plus_2d,
-                           r2_unet_2d = M_unet.r2_unet_2d,
-                           att_unet_2d = M_unet.att_unet_2d,
-                           resunet_a_2d = M_unet.resunet_a_2d,
-                           u2net_2d = M_unet.u2net_2d,
-                           unet_3plus_2d = M_unet.unet_3plus_2d,
-                           transunet_2d = M_unet.transunet_2d,
-                           swin_unet_2d = M_unet.swin_unet_2d)
+MODELS = dict(unet_2d = M_unet.unet_2d,
+            vnet_2d = M_unet.vnet_2d,
+            unet_plus_2d = M_unet.unet_plus_2d,
+            r2_unet_2d = M_unet.r2_unet_2d,
+            att_unet_2d = M_unet.att_unet_2d,
+            resunet_a_2d = M_unet.resunet_a_2d,
+            u2net_2d = M_unet.u2net_2d,
+            unet_3plus_2d = M_unet.unet_3plus_2d,
+            transunet_2d = M_unet.transunet_2d,
+            swin_unet_2d = M_unet.swin_unet_2d,
+            unet = u_net)
 
+# TODO : check if not 2 **unet_depth
 def resize_input(dim, unet_depth):
     while dim % unet_depth != 0:
         dim += 1
     return dim
 
+
 def experimental_models(input, model_args, out_shape, model_name):
     model_args = dict(model_args)
 
-    _, num_channels, height, width = input.shape
-    print('num_channels', num_channels)
-    print('height', height)
-    print('width', width)
-    x = to_channel_last(input)
+    _, height, width, channels = input.shape
+
+
     unet_depth = len(model_args['filter_num'])
     new_height = resize_input(height, unet_depth)
     new_width = resize_input(width, unet_depth)
-    print('new_height', new_height)
-    print('new_width', new_width)
+
 
     x = tf.keras.layers.Resizing(new_height, new_width)(x)
     
-    model_args['n_labels'] = num_channels
-    model_args['input_size'] = (new_height, new_width, num_channels)
+    model_args['n_labels'] = channels
+    model_args['input_size'] = (new_height, new_width, channels)
     model_args['name'] = model_name
     
-    gen_model = EXPERIMENTAL_MODELS[model_name](**model_args)
+    gen_model = MODELS[model_name](**model_args)
     gen_model.summary()
 
     x = gen_model(x)
-    print(out_shape)
     x = tf.keras.layers.Resizing(height=out_shape[1], width=out_shape[2])(x)
-    output = to_channel_first(x)
-    return output
+
+    return x
 
 
 
@@ -279,29 +312,40 @@ def get_losses(config):
     return loss_dict, dynamic_weights
 
 
-def compile_model(gen_model, gen_optimizer, loss_dict, metrics, metric_weights, discr_args=None, in_shape=None, out_shape=None):
+def compile_model(gen_model, gen_optimizer, loss_dict, metrics, metric_weights, discr_args=None, in_shape=None, out_shape=None, global_batch_size=None, distributed_gpu=False):
+    loss_weights, losses = zip(*list(loss_dict.values()))
+
+    if not distributed_gpu:
+        total_loss = LossCombiner(losses, loss_weights, name='total')
+    else :
+        total_loss = DistributedLossCombiner(losses=losses, 
+                                             loss_weights=loss_weights, 
+                                             name='total', 
+                                             global_batch_size=global_batch_size)
+        new_metrics = []
+        for m in metrics:
+            new_metrics.append(DistributedLoss(m, m.name, global_batch_size=global_batch_size))
+        metrics = new_metrics            
+
+    
     if not discr_args:
-        loss_weights, losses = zip(*list(loss_dict.values()))
-        loss = LossCombiner(losses, loss_weights, name='loss_comb')
+
         gen_model.compile(optimizer=gen_optimizer, 
-                             loss=loss, 
-                             metrics=[*metrics, LossCombiner(metrics, metric_weights, name='total')])
+                             loss=total_loss, 
+                             metrics=[*metrics, total_loss])
         model = gen_model
     
     else:
-        model = FlatNetGAN(discriminator=discr_args['model'], generator=gen_model)
-
-        lpips_loss = loss_dict['lpips'][1]
+        model = FlatNetGAN(discriminator=discr_args['model'], generator=gen_model, global_batch_size=global_batch_size)        
 
         model.compile(optimizer=gen_optimizer,
                     d_optimizer=discr_args['optimizer'],
                     adv_weight=discr_args['adv_weight'],
                     mse_weight=loss_dict['mse'][0],
-                    lpips_loss=lpips_loss,
+                    lpips_loss=loss_dict['lpips'][1],
+                    mse_loss = loss_dict['mse'][1],
                     perc_weight=loss_dict['lpips'][0],
-                    metrics=[MeanSquaredError(name='mse'), 
-                                lpips_loss, 
-                                LossCombiner([lpips_loss, MeanSquaredError(name='mse')], [1.2, 1], name='total')])
+                    metrics=[*metrics, total_loss])
         model.build(Input(shape=in_shape).shape)
 
     return model
@@ -363,8 +407,7 @@ def get_callbacks(model, store_folder, checkpoint_path, dynamic_weights, config)
 
 
 
-from tensorflow_model_optimization.quantization.keras.quantizers import MovingAverageQuantizer, LastValueQuantizer
-from tensorflow_model_optimization.quantization.keras import QuantizeConfig
+
 
 
 class FTLayerQuantizeConfig(QuantizeConfig):

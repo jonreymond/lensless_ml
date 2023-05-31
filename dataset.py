@@ -204,23 +204,26 @@ class WallerlabGenerator(DataGenerator):
         # Change range to [-1, 1] range
         x = (x - 0.5) * 2
         # to channel first
-        return x.transpose((2, 0, 1))
+        return x
+        # return x.transpose((2, 0, 1))
     
 
     def _get_y(self, filename):
         y = self._get_x(filename)
 
         if self.crop:
-            y = y[:, self.crop['low_h']: self.crop['high_h'],
-                  self.crop['low_w']: self.crop['high_w']]
+            y = y[self.crop['low_h']: self.crop['high_h'],
+                  self.crop['low_w']: self.crop['high_w'], :]
         return y
     
 
     def to_plottable_measurement(self, x):
-        return x.transpose(1, 2, 0) / x.max()
+        return x / x.max()
+        # return x.transpose(1, 2, 0) / x.max()
 
     def to_plottable_output(self, y):
-        return np.flipud(y.transpose(1, 2, 0)) / y.max()
+        return np.flipud(y) / y.max()
+        # return np.flipud(y.transpose(1, 2, 0)) / y.max()
     
 
 #########################################################################
@@ -329,7 +332,7 @@ class PhlatnetDataGenerator(DataGenerator):
 
          # Change range to [-1, 1] range
         img = (img - 0.5) * 2
-        img = np.transpose(img, (2, 0, 1))
+        # img = np.transpose(img, (2, 0, 1))
         return img.astype(np.float32)
         
 
@@ -353,7 +356,7 @@ class PhlatnetDataGenerator(DataGenerator):
         if self.use_padding:
             img = np.pad(img, self.padding, mode='edge')
 
-        img = img.transpose((2, 0, 1))
+        # img = img.transpose((2, 0, 1))
 
         # Change range to [-1, 1] range
         img = (img - 0.5) * 2
@@ -367,11 +370,11 @@ class PhlatnetDataGenerator(DataGenerator):
         red = x[0]
         green = (x[1] + x[2]) /2.0
         blue = x[3]
-        return np.asarray((red, green, blue)).transpose((1, 2, 0))
+        return np.asarray((red, green, blue))#.transpose((1, 2, 0))
         
 
     def to_plottable_output(self, y):
-        return y.transpose((1 ,2, 0))
+        return y#.transpose((1 ,2, 0))
 
     
 def extract_bayer_raw(filename):
@@ -393,8 +396,8 @@ def center_crop(img, h_crop, w_crop):
     h, w, _ = img.shape
     h_start = h // 2 - h_crop // 2
     w_start = w // 2 - w_crop // 2
-    return img[h_start : h_start + h_crop, 
-               w_start : w_start + w_crop, :]
+    return img[:, h_start : h_start + h_crop, 
+               w_start : w_start + w_crop]
         
 
 

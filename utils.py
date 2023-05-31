@@ -1,6 +1,6 @@
 import os
 import tensorflow as tf
-from lpips import LPIPS
+
 import torch
 
 from torch_to_tf import to_tf_graph
@@ -16,6 +16,7 @@ from keras.losses import MeanSquaredError
 from multiprocessing import Process, Queue, shared_memory, managers
 import sys
 import io
+
 
 
 
@@ -73,16 +74,16 @@ def to_channel_first(x):
     return tf.keras.layers.Permute([3, 1, 2])(x)
 
 
-def get_shape(data_config, measure, greyscale=False):
+def get_shape(data_config, measure, downsample=1, greyscale=False):
     pref = 'measure_' if measure else 'truth_'
+    downsample = downsample if measure else 1
     if greyscale :
-        return (1, 
-                data_config[pref + 'height'], 
-                data_config[pref + 'width'])
+        return (data_config[pref + 'height'] // downsample, 
+                data_config[pref + 'width'] // downsample, 1)
     else:
-        return (data_config[pref + 'channels'], 
-                data_config[pref + 'height'], 
-                data_config[pref + 'width'])
+        return (data_config[pref + 'height'] // downsample, 
+                data_config[pref + 'width'] // downsample,
+                data_config[pref + 'channels'])
 
 
 def get_config_from_yaml(path):
@@ -96,7 +97,7 @@ def get_config_from_yaml(path):
 # To store the resulted lpips if used in training and testing and not create 2 instances
 LPIPS_LOSS = None
 
-def get_lpips_loss(config, lpips_model):
+def get_lpips_loss(config, lpips_model, reduction):
     global LPIPS_LOSS
     if LPIPS_LOSS:
         return LPIPS_LOSS
@@ -108,13 +109,16 @@ def get_lpips_loss(config, lpips_model):
 
     def get_lpips_name():
         shape_str = ''
-        for s in shape:
+        for s in shape[:-1]:
             shape_str += '_' + str(s)
+        channel = shape[-1]
+        shape_str = '_' + str(channel) + shape_str
         return 'lpips_' + lpips_model + '_shape' + shape_str
     
     lpips_path = os.path.join('lpips_losses', get_lpips_name())
 
     if not os.path.exists(lpips_path + '.pb'):
+        from lpips import LPIPS
         print('creating lpips loss...')
         lpips_loss = LPIPS(net=lpips_model)#.cuda()
         #change to satisfy with torch order : first channels
@@ -128,13 +132,14 @@ def get_lpips_loss(config, lpips_model):
     stored_lpips = tf.keras.models.load_model(lpips_path + '.pb')
     
 
-    # if config['use_crop']:
-    #     lpips = lambda x, y : tf.reduce_mean(stored_lpips(input1=x, 
-    #                                                       input2=y
-    #                                                       )['output'])
-    # else :
-    lpips = lambda x, y : tf.reduce_mean(stored_lpips(input1=(x * 2 - 1), input2=(y * 2 - 1))['output'])
-    lpips = LossNamer(lpips, 'lpips')
+    def loss_function(x, y):
+        # to NCHW
+        x = tf.transpose(x, [0, 3, 1, 2])
+        y = tf.transpose(y, [0, 3, 1, 2])
+        return stored_lpips(input1=x, input2=y)['output']
+    
+    lpips = loss_function
+    lpips = LossNamer(lpips, 'lpips', reduction=reduction)
     
     LPIPS_LOSS = lpips
     
@@ -157,8 +162,8 @@ class ChangeLossWeights(tf.keras.callbacks.Callback):
 
 # TODO : transform to support dict
 class LossCombiner(Loss):
-    def __init__(self, losses, loss_weights=None, name='loss_combination'):
-        super().__init__(name=name)
+    def __init__(self, losses, loss_weights=None, name='loss_combination', **kwargs):
+        super().__init__(name=name, **kwargs)
         if loss_weights:
             assert len(losses) == len(loss_weights), 'the number of weights do not correspond to the number of losses'
             self.loss_weights = loss_weights
@@ -168,26 +173,31 @@ class LossCombiner(Loss):
         self.losses = losses
 
     def call(self, y_true, y_pred):
-        return tf.math.reduce_sum([weight * loss(y_true, y_pred) for weight, loss in zip(self.loss_weights, self.losses)])
+    #    for weight, loss in zip(self.loss_weights, self.losses):
+    #        print("="*80)
+    #        print('loss name', loss.name, ', weight', weight)
+    #        print('y_true shape', y_true.shape, 'y_pred shape', y_pred.shape)
+    #        print(loss(y_true, y_pred).shape)
+       return tf.math.reduce_sum([weight * loss(y_true, y_pred) for weight, loss in zip(self.loss_weights, self.losses)], axis=0)
 
 
 class LossNamer(Loss):
-    def __init__(self, loss, name):
-        super().__init__(name=name)
+    def __init__(self, loss, name, **kwargs):
+        super().__init__(name=name, **kwargs)
         self.loss = loss
 
     def call(self, y_true, y_pred):
         return self.loss(y_true, y_pred)
 
 
-class MSEChannelFirst(Loss):
-    def __init__(self, name='mse'):
-        super().__init__(name=name)
+# class MSEChannelFirst(Loss):
+#     def __init__(self, name='mse'):
+#         super().__init__(name=name)
 
-    def call(self, y_true, y_pred):
-        y_pred = tf.convert_to_tensor(y_pred)
-        y_true = tf.cast(y_true, y_pred.dtype)
-        return K.mean(tf.math.squared_difference(y_pred, y_true), axis=1)
+#     def call(self, y_true, y_pred):
+#         y_pred = tf.convert_to_tensor(y_pred)
+#         y_true = tf.cast(y_true, y_pred.dtype)
+#         return K.mean(tf.math.squared_difference(y_pred, y_true), axis=1)
 
 
 
@@ -205,35 +215,41 @@ def extract_bayer(arr):
     return img
 
 def get_loss_from_name(name_id, loss_config, config=None):
+    reduction = tf.keras.losses.Reduction.NONE if config['distributed_gpu'] else tf.keras.losses.Reduction.AUTO
     if name_id == 'mse':
-        return MeanSquaredError(name='mse')
+        # def custom_mse(y_true, y_pred):
+        # return tf.math.reduce_mean(tf.square(y_true - y_pred), axis=[1, 2, 3], keepdims=True)
+        if config['distributed_gpu']:
+            return LossNamer(lambda x, y: tf.math.reduce_mean(tf.square(x - y), axis=[1, 2, 3], keepdims=True),
+                              'mse', reduction=reduction)
+        return MeanSquaredError(name='mse', reduction=reduction)
     elif name_id == 'lpips':
-        return get_lpips_loss(config, loss_config['model'])
+        return get_lpips_loss(config, loss_config['model'], reduction)
     elif name_id == 'ssim':
-        return LossNamer(ssim, 'ssim')
+        return LossNamer(ssim, 'ssim', reduction=reduction)
     elif name_id == 'psnr':
-        return LossNamer(psnr, 'psnr')
+        return LossNamer(psnr, 'psnr', reduction=reduction)
     else:
         raise NotImplementedError('loss not implemented')
     
 def ssim(x, y):
-    # rescale from [-1, 1] to [0, 1] + NHWC format
-    x = (tf.transpose(x, perm=[0, 2, 3, 1]) + 1) / 2
-    y = (tf.transpose(y, perm=[0, 2, 3, 1]) + 1) / 2
-    return tf.reduce_mean(tf.image.ssim(x, y, max_val=1.0))
+    # rescale from [-1, 1] to [0, 1]
+    x = (x + 1) / 2
+    y = (y + 1) / 2
+    return tf.image.ssim(x, y, max_val=1.0)
 
 
 def psnr(x, y):
-    # rescale from [-1, 1] to [0, 1] + NHWC format
-    x = (tf.transpose(x, perm=[0, 2, 3, 1]) + 1) / 2
-    y = (tf.transpose(y, perm=[0, 2, 3, 1]) + 1) / 2
-    return tf.reduce_mean(tf.image.psnr(x, y, max_val=1.0))
+    # rescale from [-1, 1] to [0, 1]
+    x = (x + 1) / 2
+    y = (y + 1) / 2
+    return tf.image.psnr(x, y, max_val=1.0)
 
 
 
 
 
-
+    
 
 class ShmArray(np.ndarray):
 
@@ -248,9 +264,6 @@ class ShmArray(np.ndarray):
     def __array_finalize__(self, obj):
         if obj is None: return
         self.shm = getattr(obj, 'shm', None)
-
-
-
 
 
 

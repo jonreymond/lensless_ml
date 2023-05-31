@@ -1,4 +1,4 @@
-import setGPU
+# import setGPU
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 # from utils import *
@@ -16,7 +16,7 @@ import json
 
 
 import tensorflow as tf
-tf.keras.backend.set_image_data_format('channels_first')
+tf.keras.backend.set_image_data_format('channels_last')
 from keras import backend as K
 
 
@@ -52,25 +52,25 @@ def main(config):
     print('Store folder: ', store_folder)
     print('-'*80)
 
-    # gpus = tf.config.list_physical_devices('GPU')
-    # if gpus:
-    # # Create 2 virtual GPUs with 1GB memory each
-    #     try:
-    #         tf.config.set_logical_device_configuration(
-    #             gpus[0],
-    #             [tf.config.LogicalDeviceConfiguration(memory_limit=1024),
-    #             tf.config.LogicalDeviceConfiguration(memory_limit=1024)])
-    #         logical_gpus = tf.config.list_logical_devices('GPU')
-    #         print(len(gpus), "Physical GPU,", len(logical_gpus), "Logical GPUs")
-    #     except RuntimeError as e:
-    #         # Virtual devices must be set before GPUs have been initialized
-    #         print(e)
-    # tf.debugging.set_log_device_placement(True)
-    # gpus = tf.config.list_logical_devices('GPU')
-    # strategy = tf.distribute.MirroredStrategy(gpus)
-    # with strategy.scope():
-    for i in range(1):
+    # if config['debug_mode']:
+    #     tf.debugging.experimental.enable_dump_debug_info(
+    #     os.path.join(store_folder, 'tensorboard_logs'), tensor_debug_mode="FULL_HEALTH")
+
+
+    tf.debugging.set_log_device_placement(True)
+    gpus = tf.config.list_logical_devices('GPU')
+    communication_options = tf.distribute.experimental.CommunicationOptions(implementation=tf.distribute.experimental.CommunicationImplementation.RING)
+
+    strategy = tf.distribute.MultiWorkerMirroredStrategy(communication_options=communication_options)
+
+    
+    #tf.distribute.MirroredStrategy(gpus, cross_device_ops=tf.distribute.ReductionToOneDevice())#tf.distribute.HierarchicalCopyAllReduce())
+    with strategy.scope():
+
         for j in range(1):
+            print('number of gpus: ', len(gpus))
+            local_batch_size = config['batch_size'] // len(gpus)
+
 
 
         # copy the config file in the store folder
@@ -103,7 +103,7 @@ def main(config):
                                                         random_state=config['seed'])
             
             # Data Generators
-            data_args = dict(batch_size=config['batch_size'], 
+            data_args = dict(batch_size=local_batch_size,#config['batch_size'], 
                             greyscale=config['greyscale'],
                             use_crop=config['use_crop'], 
                             seed=config['seed'])
@@ -112,14 +112,20 @@ def main(config):
             print('train length: ',len(train_indexes), ', val length: ', len(val_indexes))
             assert len(train_indexes) > 0 and len(val_indexes) > 0 and len(train_indexes)> len(val_indexes), 'Wrong train/val split'
             
-            train = get_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
-            # train = tf.data.Dataset.from_generator(train)
-            val = get_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
+            # train = get_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
+            # # train = tf.data.Dataset.from_generator(train)
+            # val = get_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
+
+            train = get_tf_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
+            val = get_tf_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
+
+            # val = strategy.experimental_distribute_dataset(val)
+            # train = strategy.experimental_distribute_dataset(train)
 
 
-
-            # train = get_tf_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
-            # val = get_tf_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
+            # for x, y in val.take(1):
+            #     print('x shape: ', x.shape)
+            #     print('y shape: ', y.shape)
 
 
             # train = shared_mem_multiprocessing(train, workers=config['workers'], queue_max_size=32)
@@ -128,10 +134,8 @@ def main(config):
             # train = tf.data.Dataset.from_generator(train)
             # val = tf.data.Dataset.from_generator(train)
 
-
             # losses
             loss_dict, dynamic_weights = get_losses(config)
-
             # metrics
             metrics, metric_weights = get_metrics(config)
 
@@ -143,11 +147,11 @@ def main(config):
             # don't work with tf 12.0
             # optimizer = tf.keras.optimizers.get(config['optimizer']['identifier'], **config['optimizer']['kwargs'])
 
-            
-            input_shape = get_shape(dataset_config, measure=True, greyscale=config['greyscale'])
-            output_shape = get_shape(dataset_config, measure=False, greyscale=config['greyscale'])
+            downsample = config['dataset']['downsample']
 
+            input_shape = get_shape(dataset_config, measure=True, greyscale=config['greyscale'], downsample=downsample)
 
+            output_shape = get_shape(dataset_config, measure=False, greyscale=config['greyscale'], downsample=downsample)
 
 
             input = Input(shape=input_shape, name='input', dtype='float32')
@@ -184,15 +188,12 @@ def main(config):
             gen_model = ReconstructionModel2(input_shape=input_shape, 
                                             # output_shape=output_shape, 
                                             camera_inversion_layer=camera_inversion_layer,
-                                            perceptual_model=perceptual_model)
-            
-            
+                                            perceptual_model=perceptual_model)      
 
             gen_model.build((None, *input_shape))
 
-
             print(gen_model.summary())
-            
+
 
             
             if config['use_QAT']:
@@ -222,6 +223,7 @@ def main(config):
                 discr_args = dict(model=d_model, optimizer=d_optimizer, adv_weight=adv_weight)
 
 
+
             model = compile_model(gen_model=gen_model, 
                                 gen_optimizer=optimizer, 
                                 loss_dict=loss_dict, 
@@ -229,7 +231,9 @@ def main(config):
                                 metric_weights=metric_weights, 
                                 discr_args=discr_args,
                                 in_shape=input_shape, 
-                                out_shape=output_shape)
+                                out_shape=output_shape,
+                                global_batch_size=local_batch_size,#config['batch_size'],
+                                distributed_gpu=config['distributed_gpu'])
 
             print(model.summary())
 

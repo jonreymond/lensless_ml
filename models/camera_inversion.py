@@ -5,7 +5,7 @@ from keras.layers.core import Activation
 
 from keras.models import Model
 import tensorflow as tf
-tf.keras.backend.set_image_data_format('channels_first')
+
 import numpy as np
 from keras.losses import MeanSquaredError
 from models.unet import u_net
@@ -42,7 +42,7 @@ class SeparableLayer(tf.keras.layers.Layer):
 
     def build(self, input_shape):
         self.in_shape = input_shape
-        b, c, h, w = self.in_shape
+        b, h, w, c = self.in_shape
         print(self.W1.shape)
         print(self.W2.shape)
         assert h == self.W1.shape[1], f"W1 width must be equal to the input height, got {self.W1.shape[1]} and {h}"
@@ -255,44 +255,51 @@ class FTLayer(tf.keras.layers.Layer):
         config (dict) :
         psf_crop (tf.Tensor) :
     """
-    def __init__(self, psf, activation='linear', gamma=20000, pad=True, train_ft=False, **kwargs):
+    def __init__(self, psf, activation='linear', gamma=20000, pad=False, **kwargs):
         super(FTLayer, self).__init__(name='non_separable_layer', **kwargs)
         self.psf = psf
         self.pad = pad
         self.activation = tf.keras.activations.get(activation)
-        self.train_ft = train_ft
         self.gamma = gamma
 
-        # pad values
-        height, width, channel = psf.shape
         self.psf_shape = psf.shape
-        print('psf shape', psf.shape)
-        img_shape = np.asarray([height, width])
-        self._padded_shape = 2 * img_shape - 1
-        self._padded_shape = np.array([next_fast_len(i) for i in self._padded_shape])
-        self._padded_shape = list(np.r_[self._padded_shape, channel])
-
-        self._start_idx = (self._padded_shape[0 : 1] - img_shape) // 2
-        self._end_idx = self._start_idx + img_shape
 
         wiener_crop = tf.convert_to_tensor(get_wiener_matrix(psf, gamma=self.gamma))
         wiener_crop = tf.transpose(wiener_crop, (2, 0, 1))
         
-        if train_ft:
-            wiener_crop = self._to_ft(wiener_crop)
-
         self.W = tf.Variable(wiener_crop, name='camera_inversion_W')
 
         self.normalizer = tf.Variable([[[[1 / 0.0008]]]], shape=(1, 1, 1, 1), name='camera_inversion_normalizer') 
 
-    def build(self, input_shape):
-        if self.psf_shape != input_shape:
-            print('input shape different from psf shape: ', input_shape, self.psf_shape)
-            print('padding input')
-            psf_img_shape = np.asarray(self.psf_shape[:2])
-            # TODO
-            
 
+    def build(self, input_shape):
+        channel = input_shape[3]
+        
+        psf_shape = np.asarray(self.psf_shape[:2])
+        in_shape = np.asarray(input_shape[1:3])
+        
+        
+        assert np.all(psf_shape >= in_shape), 'PSF shape must be greater than input shape'
+
+        target_shape = 2 * in_shape - 1 if self.pad else psf_shape
+
+        self._start_idx_input, self._end_idx_input = self._get_pad_idx(img_shape=in_shape, target_shape=target_shape, channel=channel)
+        # to pad to efficient computation size
+        self._start_idx_psf, self._end_idx_psf = self._get_pad_idx(img_shape=psf_shape, target_shape=target_shape, channel=channel)
+        
+
+        
+    def _get_pad_idx(self, img_shape, target_shape, channel):
+        padded_shape = np.asarray(target_shape)
+
+        padded_shape = np.array([next_fast_len(i) for i in padded_shape])
+        print('padded shape', padded_shape)
+        padded_shape = list(np.r_[padded_shape, channel])
+
+        start_idx = (padded_shape[0 : 2] - img_shape) // 2
+
+        end_idx = start_idx + (padded_shape[0 : 2] - img_shape) % 2
+        return start_idx, end_idx
         
     
     def get_config(self):
@@ -309,38 +316,41 @@ class FTLayer(tf.keras.layers.Layer):
       
 
     def _to_ft(self, w):
-        print('w1', w.shape)
-        if self.pad:
-            w = tf.pad(w, ((0,0),
-                           (self._start_idx[0], self._end_idx[0]),
-                           (self._start_idx[1], self._end_idx[1])), "CONSTANT")
-            print('w2', w.shape)
+        w = tf.pad(w, ((0,0),
+                       (self._start_idx_psf[0], self._end_idx_psf[0]),
+                       (self._start_idx_psf[1], self._end_idx_psf[1])), "CONSTANT")
+        
+
         return tf.signal.rfft2d(w)
 
 
     def call(self, x):
-        if self.pad:
-            print('x1', x.shape)
-            x = ZeroPadding2D(((self._start_idx[0], self._end_idx[0]),
-                              (self._start_idx[1], self._end_idx[1])))(x)
-            print('x2', x.shape)
+        
+        a = ZeroPadding2D(((self._start_idx_input[0], self._end_idx_input[0]),
+                            (self._start_idx_input[1], self._end_idx_input[1])))(x)
+        
+        x = tf.pad(x, ((0,0),
+                       (self._start_idx_input[0], self._end_idx_input[0]),
+                       (self._start_idx_input[1], self._end_idx_input[1]), (0,0)), "CONSTANT")
+        
+        
+        x = to_channel_first(x)
 
         
-        W = self.W if self.train_ft else self._to_ft(self.W)
+        W = self._to_ft(self.W)
 
-        print(W.shape)
-        print(x.shape)
         mult = tf.signal.rfft2d(x) * W
 
         x = tf.signal.ifftshift(tf.signal.irfft2d(mult),
                                 axes=(-2, -1))
         
-        if self.pad:
-            x = Cropping2D(cropping=((self._start_idx[0], self._end_idx[0]),
-                                     (self._start_idx[1], self._end_idx[1])),
+        x = Cropping2D(cropping=((self._start_idx_input[0], self._end_idx_input[0]),
+                                     (self._start_idx_input[1], self._end_idx_input[1])),
                                      data_format='channels_first')(x)
 
         x = x * self.normalizer
+
+        x = to_channel_last(x)
 
         return self.activation(x)
     
@@ -357,12 +367,15 @@ MAX_UINT8_VAL = 2**8 -1
 def get_psf(data_config):
     psf_config = data_config['psf']
     if data_config['name'] == 'wallerlab':
-        psf = (np.array(Image.open(psf_config['path'])) / MAX_UINT16_VAL).astype('float32')
+        psf = (np.array(Image.open(psf_config['path'])) / MAX_UINT8_VAL).astype('float32')
         return psf
     
     elif data_config['name'] == 'phlatnet':
-        psf_crop = np.load(psf_config['path'])
-        return psf_crop
+        psf = np.load(psf_config['path'])
+
+        psf = psf[:: data_config['downsample'], :: data_config['downsample'], :]
+
+        return psf
     
     elif data_config['name'] == 'flatnet':
         raise NotImplementedError('flatnet dataset not implemented yet')

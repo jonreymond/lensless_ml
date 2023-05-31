@@ -5,6 +5,7 @@ from keras.losses import MeanSquaredError
 from keras.losses import Loss
 from keras import optimizers
 
+import models.model_utils as model_utils
 
 
 ###############################################################################
@@ -12,33 +13,39 @@ from keras import optimizers
 ###############################################################################
 
 class DiscrLoss(Loss):
-    def __init__(self, name='discr_loss'):
-        super().__init__(name=name)
+    def __init__(self, name='discr_loss', **kwargs):
+        super().__init__(name=name, **kwargs)
        
 
     def call(self, y_true, y_pred):
-        return tf.math.reduce_mean(-tf.math.log(y_true) - tf.math.log(1 - y_pred))
+        return -tf.math.log(y_true) - tf.math.log(1 - y_pred)
+        # return tf.math.reduce_mean(-tf.math.log(y_true) - tf.math.log(1 - y_pred))
+
 
 
 class FlatNetGAN(Model):
-    def __init__(self, discriminator, generator):
+    def __init__(self, discriminator, generator, global_batch_size=None):
         super(FlatNetGAN, self).__init__()
         self.discriminator = discriminator
         self.generator = generator
+        self.global_batch_size = global_batch_size
         # losses
-        self.d_loss = DiscrLoss()
+        self.d_loss = model_utils.DistributedLoss(DiscrLoss(reduction=tf.keras.losses.Reduction.NONE),
+                                                  name='discr', 
+                                                  global_batch_size=global_batch_size)
+        
 
-
-    def compile(self, optimizer, d_optimizer, lpips_loss, adv_weight, mse_weight, perc_weight, metrics):
+    def compile(self, optimizer, d_optimizer, lpips_loss, mse_loss, adv_weight, mse_weight, perc_weight, metrics):
         super(FlatNetGAN, self).compile(metrics=metrics, optimizer=optimizer)
         self.d_optimizer = optimizers.get(d_optimizer) if isinstance(d_optimizer, str) else d_optimizer
         self.g_optimizer = optimizers.get(optimizer) if isinstance(optimizer, str) else optimizer
 
-        self.lpips_loss = lpips_loss
-        self.g_mse_loss = MeanSquaredError()
+        self.lpips_loss = model_utils.DistributedLoss(lpips_loss, lpips_loss.name, self.global_batch_size)
+        self.g_mse_loss = model_utils.DistributedLoss(mse_loss, mse_loss.name, self.global_batch_size)
         self.adv_weight = adv_weight
         self.mse_weight = mse_weight
         self.perc_weight = perc_weight
+        
 
     # TODO : check
     def call(self, inputs):
@@ -64,13 +71,20 @@ class FlatNetGAN(Model):
         # Generator training
         with tf.GradientTape() as tape:
             gen_img = self.generator(sensor_img)
-            adv_loss = tf.math.reduce_mean(- tf.math.log(self.discriminator(gen_img)))
+            adv_loss = tf.nn.compute_average_loss(-tf.math.log(self.discriminator(gen_img)), global_batch_size=self.global_batch_size)
             mse_loss = self.g_mse_loss(real_img, gen_img)
             perc_loss = self.lpips_loss(real_img, gen_img)
+            
             g_loss_res = self.adv_weight * adv_loss + self.mse_weight * mse_loss + self.perc_weight * perc_loss
 
         grads = tape.gradient(g_loss_res, self.generator.trainable_weights)
         self.g_optimizer.apply_gradients(zip(grads, self.generator.trainable_weights))
+
+        # tf.print('d_loss', d_loss_res)
+        # tf.print('g_loss', g_loss_res)
+        # tf.print('adv_loss', adv_loss)
+        # tf.print('mse_loss', mse_loss)
+        # tf.print('perc_loss', perc_loss)
         
         return {"d": d_loss_res, "g": g_loss_res, "adv": adv_loss, "mse":mse_loss, "lpips" : perc_loss}
     

@@ -19,6 +19,8 @@ random_toeplitz_path:
   phi_l: '/scratch/jreymond/ICCV-2019-FlatNet-Dataset/initialization matrices/phil_toep_slope22.mat'
   phi_r: '/scratch/jreymond/ICCV-2019-FlatNet-Dataset/initialization matrices/phir_toep_slope22.matt'
 
+
+downsample: 1
 # psf:
 #   path: "TODO"
 #   height: 1280 
