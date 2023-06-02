@@ -25,21 +25,25 @@ camera_inversion_args:
 # don't change
 distributed_gpu: True
 
+
+weight_pruning: False
+weight_clustering: True
+num_clusters: 16
 # Quantization Aware Training
-use_QAT: False
+QAT: False
 
 # GAN
 use_discriminator: False
 
-workers: 32
+workers: 16
 # queue_max_size: 32
 
 batch_size: 4
 #validation set percentage
 validation_split: 0.2
-epochs: 80
+epochs: 3
 # to be used to test the train pipeline : will only train on a subset of the dataset
-test: True
+test: False
 
 device_conv: cuda    # "cuda" or "cpu", not yet implemented for cpu
   
@@ -50,7 +54,7 @@ save: True
 use_tensorboard: True
 # to get the number of batches processed by tensorboard in each epoch for runtime analysis
 # may induce runtime overhead if set too high
-tensorboard_profile_batch: 50
+tensorboard_profile_batch: 20
 
 # debug_mode: True
 

@@ -19,7 +19,7 @@ from scipy.io import loadmat
 from PIL import Image
 import sys
 
-
+import tensorflow_model_optimization as tfmot
 
 ######################################################################
 ############################# Separable ##############################
@@ -27,7 +27,7 @@ import sys
 
 
 
-class SeparableLayer(tf.keras.layers.Layer):
+class SeparableLayer(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer, tfmot.clustering.keras.ClusterableLayer):
     """Layer used for the trainable inversion in FlatNet for the separable case
 
     Args:
@@ -63,6 +63,15 @@ class SeparableLayer(tf.keras.layers.Layer):
     def set_list_weights(self, list_weights):
         self.W1 = list_weights[0]
         self.W2 = list_weights[1]
+
+    def get_prunable_weights(self):
+        return [self.W1, self.W2]
+    
+    def get_clusterable_weights(self):
+        return [('W1', self.W1), ('W2', self.W2)]
+
+
+
     
     
 
@@ -119,7 +128,7 @@ def get_wiener_matrix(psf, gamma: int = 20000):
 
 
 
-class FTLayer(tf.keras.layers.Layer):
+class FTLayer(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer, tfmot.clustering.keras.ClusterableLayer):
     """Layer used for the trainable inversion in FlatNet for the non-separable case
 
     Args:
@@ -231,6 +240,12 @@ class FTLayer(tf.keras.layers.Layer):
     def set_list_weights(self, list_weights):
         self.W = list_weights[0]
         self.normalizer = list_weights[1]
+
+    def get_prunable_weights(self):
+        return [self.W]
+    
+    def get_clusterable_weights(self):
+        return [('W', self.W)]
     
 
 

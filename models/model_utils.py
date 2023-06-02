@@ -13,6 +13,7 @@ from keras_unet_collection import models as M_unet
 
 from utils import *
 
+import tensorflow_model_optimization as tfmot
 from tensorflow_model_optimization.quantization.keras.quantizers import MovingAverageQuantizer, LastValueQuantizer
 from tensorflow_model_optimization.quantization.keras import QuantizeConfig
 
@@ -368,6 +369,11 @@ def get_callbacks(model, store_folder, checkpoint_path, dynamic_weights, config)
                                             verbose=1)
     
     callbacks = [model_checkpoint]
+
+    if config['weight_pruning']:
+        callbacks.append(tfmot.sparsity.keras.UpdatePruningStep())
+        callbacks.append(tfmot.sparsity.keras.PruningSummaries(log_dir=os.path.join(store_folder, 'pruning_logs')))
+
     if dynamic_weights:
         print('Using dynamic weights')
         callbacks.append(ChangeLossWeights(dynamic_weights))

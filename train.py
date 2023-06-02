@@ -28,11 +28,12 @@ from datetime import datetime
 
 from tf_dataset import *
 
-import tensorflow_model_optimization as tfmot
 
 from hydra.utils import get_original_cwd, to_absolute_path
 
+import tensorflow_model_optimization as tfmot
 from tensorflow_model_optimization.quantization.keras import quantize_scope, quantize_annotate_layer, quantize_apply, quantize_annotate_model
+
 
 
 
@@ -190,17 +191,31 @@ def main(config):
 
             print(gen_model.summary())
 
+            if config['weight_pruning']:
+                gen_model = tf.keras.Sequential([Input(shape=input_shape, name='input', dtype='float32'),
+                                                tfmot.sparsity.keras.prune_low_magnitude(gen_model.camera_inversion_layer),
+                                                tfmot.sparsity.keras.prune_low_magnitude(gen_model.perceptual_model)])
+
+
+            if config['weight_clustering']:
+                gen_model = tf.keras.Sequential([Input(shape=input_shape, name='input', dtype='float32'),
+                                                tfmot.clustering.keras.cluster_weights(gen_model.camera_inversion_layer, 
+                                                                                        number_of_clusters=config['num_clusters']),
+                                                tfmot.clustering.keras.cluster_weights(gen_model.perceptual_model, 
+                                                                                        number_of_clusters=config['num_clusters'])])
+
+
 
             
-            if config['use_QAT']:
+            if config['QAT']:
 
-                model = tf.keras.Sequential([quantize_annotate_layer(gen_model.camera_inversion_layer, InversionLayerQuantizeConfig()),
+                qat_model = tf.keras.Sequential([quantize_annotate_layer(gen_model.camera_inversion_layer, InversionLayerQuantizeConfig()),
                                              quantize_annotate_model(gen_model.perceptual_model)])
-                model.build((None, *input_shape))
+                qat_model.build((None, *input_shape))
                 with quantize_scope({'InversionLayerQuantizeConfig': InversionLayerQuantizeConfig,
                                      'FTLayer': FTLayer}):
-                    model = quantize_apply(model)
-                gen_model = model
+                    qat_model = quantize_apply(qat_model)
+                gen_model = qat_model
 
                 print('done')
 
