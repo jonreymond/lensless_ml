@@ -1,6 +1,6 @@
-# import setGPU
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1, 2'
+import setGPU
+# import os
+# os.environ['CUDA_VISIBLE_DEVICES'] = '1, 2'
 # from utils import *
 import hydra
 
@@ -63,7 +63,7 @@ def main(config):
     communication_options = tf.distribute.experimental.CommunicationOptions(implementation=tf.distribute.experimental.CommunicationImplementation.RING)
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy(communication_options=communication_options)
-    #strategy = tf.distribute.MirroredStrategy(gpus)#, cross_device_ops=tf.distribute.ReductionToOneDevice())#tf.distribute.HierarchicalCopyAllReduce())
+    # #strategy = tf.distribute.MirroredStrategy(gpus)#, cross_device_ops=tf.distribute.ReductionToOneDevice())#tf.distribute.HierarchicalCopyAllReduce())
     with strategy.scope():
     # for i in range(1):
         
