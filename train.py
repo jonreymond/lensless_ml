@@ -60,16 +60,16 @@ def main(config):
     # tf.debugging.set_log_device_placement(True)
 
     gpus = tf.config.list_logical_devices('GPU')
-    communication_options = tf.distribute.experimental.CommunicationOptions(implementation=tf.distribute.experimental.CommunicationImplementation.RING)
+    # communication_options = tf.distribute.experimental.CommunicationOptions(implementation=tf.distribute.experimental.CommunicationImplementation.RING)
 
-    strategy = tf.distribute.MultiWorkerMirroredStrategy(communication_options=communication_options)
-    # #strategy = tf.distribute.MirroredStrategy(gpus)#, cross_device_ops=tf.distribute.ReductionToOneDevice())#tf.distribute.HierarchicalCopyAllReduce())
-    with strategy.scope():
-    # for i in range(1):
+    # strategy = tf.distribute.MultiWorkerMirroredStrategy(communication_options=communication_options)
+    # # #strategy = tf.distribute.MirroredStrategy(gpus)#, cross_device_ops=tf.distribute.ReductionToOneDevice())#tf.distribute.HierarchicalCopyAllReduce())
+    # with strategy.scope():
+    for i in range(1):
         
-        with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
-            sys.stdout = Tee(sys.stdout, f)
-            sys.stderr = Tee(sys.stderr, f)
+        # with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
+        #     sys.stdout = Tee(sys.stdout, f)
+        #     sys.stderr = Tee(sys.stderr, f)
 
         # for j in range(1):
             print('number of gpus: ', len(gpus))
@@ -194,10 +194,10 @@ def main(config):
             
             if config['use_QAT']:
 
-                model = tf.keras.Sequential([quantize_annotate_layer(gen_model.camera_inversion_layer, FTLayerQuantizeConfig()),
+                model = tf.keras.Sequential([quantize_annotate_layer(gen_model.camera_inversion_layer, InversionLayerQuantizeConfig()),
                                              quantize_annotate_model(gen_model.perceptual_model)])
                 model.build((None, *input_shape))
-                with quantize_scope({'FTLayerQuantizeConfig': FTLayerQuantizeConfig,
+                with quantize_scope({'InversionLayerQuantizeConfig': InversionLayerQuantizeConfig,
                                      'FTLayer': FTLayer}):
                     model = quantize_apply(model)
                 gen_model = model

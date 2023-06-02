@@ -415,13 +415,13 @@ def get_callbacks(model, store_folder, checkpoint_path, dynamic_weights, config)
 
 
 
-class FTLayerQuantizeConfig(QuantizeConfig):
+class InversionLayerQuantizeConfig(QuantizeConfig):
     # Configure how to quantize weights.
     def get_weights_and_quantizers(self, layer):
-        weights_and_quantizers =  [(layer.ft_layer, LastValueQuantizer(num_bits=8, symmetric=True, narrow_range=False, per_axis=False)),
-                                   (layer.normalizer, LastValueQuantizer(num_bits=8, symmetric=True, narrow_range=False, per_axis=False))]
-        if layer.mask:
-            weights_and_quantizers.append((layer.mask, LastValueQuantizer(num_bits=8, symmetric=True, narrow_range=False, per_axis=False)))
+
+        weights_and_quantizers = [(layer_weights, LastValueQuantizer(num_bits=8, symmetric=True, narrow_range=False, per_axis=False))
+                                  for layer_weights in layer.get_list_weights()]
+        
         return weights_and_quantizers
                 
     
@@ -433,10 +433,7 @@ class FTLayerQuantizeConfig(QuantizeConfig):
     def set_quantize_weights(self, layer, quantize_weights):
         # Add this line for each item returned in `get_weights_and_quantizers`
         # , in the same order
-        layer.ft_layer = quantize_weights[0]
-        layer.normalizer = quantize_weights[1]
-        if layer.mask:
-            layer.mask = quantize_weights[2]
+        layer.set_list_weights(quantize_weights)
 
     def set_quantize_activations(self, layer, quantize_activations):
         # Add this line for each item returned in `get_activations_and_quantizers`

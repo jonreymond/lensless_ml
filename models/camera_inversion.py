@@ -40,6 +40,7 @@ class SeparableLayer(tf.keras.layers.Layer):
         self.activation = tf.keras.layers.LeakyReLU(alpha=0.2)
 
 
+
     def build(self, input_shape):
         self.in_shape = input_shape
         b, h, w, c = self.in_shape
@@ -55,6 +56,14 @@ class SeparableLayer(tf.keras.layers.Layer):
         temp = tf.matmul(self.W1, x)
         temp = tf.matmul(temp, self.W2)
         return self.activation(temp)
+    
+    def get_list_weights(self):
+        return [self.W1, self.W2]
+
+    def set_list_weights(self, list_weights):
+        self.W1 = list_weights[0]
+        self.W2 = list_weights[1]
+    
     
 
 
@@ -106,144 +115,6 @@ def get_wiener_matrix(psf, gamma: int = 20000):
 
 
 
-
-# class FTLayer(tf.keras.layers.Layer):
-#     """Layer used for the trainable inversion in FlatNet for the non-separable case
-
-#     Args:
-#         config (dict) :
-#         psf_crop (tf.Tensor) :
-#         mask (TODO): 
-#     """
-#     def __init__(self, config, psf, mask=None, name='non_separable_layer', activation='linear',**kwargs):
-#         super(FTLayer, self).__init__(name=name, **kwargs)
-#         self.psf = psf
-#         self.config = dict(config)
-#         # self.activation = Activation(activation, name=activation)
-#         self.activation = tf.keras.activations.get(activation)
-        
-
-#         wiener_crop = get_wiener_matrix(psf, 
-#                                         gamma=config['wiener_gamma'])
-#         # TODO : define if better use add_weight
-
-#         self.ft_layer = tf.Variable(tf.convert_to_tensor(wiener_crop), name='camera_inversion_ft_layer')
-
-#         self.normalizer = tf.Variable([[[[1 / 0.0008]]]], shape=(1, 1, 1, 1), name='camera_inversion_normalizer')
-
-#         data_config = config['dataset']
-#         psf_config = data_config['psf']
-#         self.pad_x = (psf_config['height'] - psf_config['crop_size_x']) // 2
-#         self.pad_y = (psf_config['width'] - psf_config['crop_size_y']) // 2
-
-
-#         ft_test = tf.zeros(self.ft_layer.shape)
-#         ft_test = tf.pad(ft_test, ((self.pad_y, self.pad_y), (self.pad_x, self.pad_x), (0, 0)), "CONSTANT")
-#         for axis in range(2):
-#             ft_test = tf.roll(ft_test, axis=axis, shift=-(ft_test.shape[axis] // 2))
-
-#         ft_h, ft_w, _ = ft_test.shape
-
-#         img_h = data_config['truth_height']
-#         img_w = data_config['truth_width']
-#         self.low_crop_h = ft_h // 2 - img_h // 2    
-#         self.high_crop_h = ft_h // 2 + img_h // 2  
-
-#         self.low_crop_w = ft_w // 2 - img_w // 2    
-#         self.high_crop_w = ft_w // 2 + img_w // 2  
-
-#         self.ft_h, self.ft_w = ft_h, ft_w
-    
-#         self.mask = tf.Variable(mask, name='camera_inversion_mask') if mask else None
-
-
-#     def build(self, input_shape):
-#         _, c, h, w = input_shape
-#         # here pad psf to match input shape
-#         self.pad_input = None
-#         self.pad_psf = None
-        
-#         if (h - self.ft_h) < 0 and (w - self.ft_w) < 0:
-#             # need to pad input
-#             x_diff = self.ft_h - h
-#             y_diff = self.ft_w - w
-#             h_before = x_diff // 2
-#             h_after = x_diff - h_before
-#             w_before = y_diff // 2
-#             w_after = y_diff - w_before
-#             self.pad_input = ((h_before, h_after), (w_before, w_after))
-
-#         elif (h - self.ft_h) >= 0 and (w - self.ft_w) >= 0:
-#             # need to pad psf
-#             x_diff = h - self.ft_h
-#             y_diff = w - self.ft_w
-#             h_before = x_diff // 2
-#             h_after = x_diff - h_before
-#             w_before = y_diff // 2
-#             w_after = y_diff - w_before
-#             self.pad_psf = ((h_before, h_after), (w_before, w_after), (0, 0))
-
-#             self.in_shape = input_shape
-#         else:
-#             raise NotImplementedError('Need to pad PSF and input')
-#         return
-    
-#     def get_config(self):
-#         config = super().get_config()
-
-#         config.update({
-#             "psf": self.psf,
-#             "config": self.config,
-#             "mask": self.mask
-#         })
-#         return config
-      
-
-#     def call(self, x):
-#         if self.pad_input:
-#             x = ZeroPadding2D(padding=self.pad_input)(x)
-
-#         curr_ft_layer = self.ft_layer
-
-#         if self.pad_psf:
-#             curr_ft_layer = tf.pad(curr_ft_layer, paddings=self.pad_psf, mode="CONSTANT")
-
-        
-#         for axis in range(2):
-#             curr_ft_layer = tf.roll(curr_ft_layer, axis=axis, shift=-(curr_ft_layer.shape[axis] // 2))
-
-#         # print('ft_shape', curr_ft_layer.shape)
-#         # print('ft layer after:', ft_layer.shape)
-#         # print(ft_layer.shape)
-#         # TODO : change # channels 
-#         # ft_layer = tf.reshape(ft_layer, (1, 1, self.ft_h, self.ft_w))
-#         # ft_layer =  Reshape((self.ft_h, self.ft_w, 1))(ft_layer)
-#         # sys.exit()
-
-#         # to range [0, 1]
-#         x = 0.5 * x + 0.5
-
-#         if self.mask:
-#             x = x * self.mask
-
-#         # x = ZeroPadding2D(padding=self.pad_input)(x)
-
-#         x = fft_conv2d(x, curr_ft_layer) * self.normalizer
-
-#         # Centre Crop
-#         # print('x before crop', x.shape)
-#         # x = x[  :, :, 
-#         #         self.low_crop_h : self.high_crop_h,
-#         #         self.low_crop_w : self.high_crop_w]
-#         # print('x before crop', x.shape)
-
-#         x = Cropping2D(cropping=((self.low_crop_h, x.shape[2] - self.high_crop_h),
-#                                   (self.low_crop_w, x.shape[3] - self.high_crop_w)),
-#                         data_format='channels_first')(x)
-
-#         # print('x after crop', x.shape)
-#         x = self.activation(x)
-#         return x
     
 
 
@@ -255,8 +126,8 @@ class FTLayer(tf.keras.layers.Layer):
         config (dict) :
         psf_crop (tf.Tensor) :
     """
-    def __init__(self, psf, activation='linear', gamma=20000, pad=False, **kwargs):
-        super(FTLayer, self).__init__(name='non_separable_layer', **kwargs)
+    def __init__(self, psf, activation='linear', gamma=20000, pad=False,name='non_separable_layer', **kwargs):
+        super(FTLayer, self).__init__(name=name, **kwargs)
         self.psf = psf
         self.pad = pad
         self.activation = tf.keras.activations.get(activation)
@@ -269,7 +140,8 @@ class FTLayer(tf.keras.layers.Layer):
         
         self.W = tf.Variable(wiener_crop, name='camera_inversion_W')
 
-        self.normalizer = tf.Variable([[[[1 / 0.0008]]]], shape=(1, 1, 1, 1), name='camera_inversion_normalizer') 
+        self.normalizer = tf.Variable([[[[1 / 0.0008]]]], shape=(1, 1, 1, 1), name='camera_inversion_normalizer')
+
 
 
     def build(self, input_shape):
@@ -309,7 +181,6 @@ class FTLayer(tf.keras.layers.Layer):
             "psf": self.psf,
             "activation": self.activation,
             "pad": self.pad,
-            "train_ft": self.train_ft,
             "gamma": self.gamma
         })
         return config
@@ -353,6 +224,13 @@ class FTLayer(tf.keras.layers.Layer):
         x = to_channel_last(x)
 
         return self.activation(x)
+    
+    def get_list_weights(self):
+        return [self.W, self.normalizer]
+    
+    def set_list_weights(self, list_weights):
+        self.W = list_weights[0]
+        self.normalizer = list_weights[1]
     
 
 
