@@ -29,17 +29,17 @@ distributed_gpu: True
 use_QAT: False
 
 # GAN
-use_discriminator: True
+use_discriminator: False
 
-workers: 16
+workers: 32
 # queue_max_size: 32
 
-batch_size: 16
+batch_size: 4
 #validation set percentage
 validation_split: 0.2
-epochs: 100
+epochs: 80
 # to be used to test the train pipeline : will only train on a subset of the dataset
-test: False
+test: True
 
 device_conv: cuda    # "cuda" or "cpu", not yet implemented for cpu
   
@@ -63,7 +63,7 @@ pretrained_path : /root/jreymond/lensless_ml/outputs/2023-05-15/12-14-26/tensorf
 use_crop: True
 
 seed: 1   # Note : will not result in a deterministic output if use cuda device
-
+verbose: 1
 
 optimizer:
   # name of optimizer technique desired

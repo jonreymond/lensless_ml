@@ -1,6 +1,6 @@
 # import setGPU
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1, 2'
 # from utils import *
 import hydra
 
@@ -57,20 +57,23 @@ def main(config):
     #     os.path.join(store_folder, 'tensorboard_logs'), tensor_debug_mode="FULL_HEALTH")
 
 
-    tf.debugging.set_log_device_placement(True)
+    # tf.debugging.set_log_device_placement(True)
+
     gpus = tf.config.list_logical_devices('GPU')
     communication_options = tf.distribute.experimental.CommunicationOptions(implementation=tf.distribute.experimental.CommunicationImplementation.RING)
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy(communication_options=communication_options)
-
-    
-    #tf.distribute.MirroredStrategy(gpus, cross_device_ops=tf.distribute.ReductionToOneDevice())#tf.distribute.HierarchicalCopyAllReduce())
+    #strategy = tf.distribute.MirroredStrategy(gpus)#, cross_device_ops=tf.distribute.ReductionToOneDevice())#tf.distribute.HierarchicalCopyAllReduce())
     with strategy.scope():
+    # for i in range(1):
+        
+        with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
+            sys.stdout = Tee(sys.stdout, f)
+            sys.stderr = Tee(sys.stderr, f)
 
-        for j in range(1):
+        # for j in range(1):
             print('number of gpus: ', len(gpus))
-            local_batch_size = config['batch_size'] // len(gpus)
-
+            local_batch_size = config['batch_size'] #// len(gpus)
 
 
         # copy the config file in the store folder
@@ -78,18 +81,12 @@ def main(config):
         # sys.stdout = Tee(sys.stdout, f)
         # sys.stderr = Tee(sys.stderr, f)
         # for i in range(1):
-        # with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
-        #     sys.stdout = Tee(sys.stdout, f)
-        #     sys.stderr = Tee(sys.stderr, f)
-
+        
 
             # print("Num GPUs Available: ", tf.config.list_physical_devices('GPU'))
 
             # gpus = tf.config.list_physical_devices('GPU')
             # tf.config.set_visible_devices(gpus[0], 'GPU')
-
-
-            # sys.exit()
 
 
             dataset_config = config['dataset']
@@ -134,10 +131,15 @@ def main(config):
             # train = tf.data.Dataset.from_generator(train)
             # val = tf.data.Dataset.from_generator(train)
 
+            downsample = config['dataset']['downsample']
+            input_shape = get_shape(dataset_config, measure=True, greyscale=config['greyscale'], downsample=downsample)
+
+            output_shape = get_shape(dataset_config, measure=False, greyscale=config['greyscale'], downsample=downsample)
+
             # losses
-            loss_dict, dynamic_weights = get_losses(config)
+            loss_dict, dynamic_weights = get_losses(config, output_shape, local_batch_size)
             # metrics
-            metrics, metric_weights = get_metrics(config)
+            metrics, metric_weights = get_metrics(config, output_shape, local_batch_size)
 
 
             opt_config = dict(config['optimizer'])
@@ -145,13 +147,7 @@ def main(config):
             opt_config.pop('identifier')
             optimizer = Opt_class(**opt_config)
             # don't work with tf 12.0
-            # optimizer = tf.keras.optimizers.get(config['optimizer']['identifier'], **config['optimizer']['kwargs'])
-
-            downsample = config['dataset']['downsample']
-
-            input_shape = get_shape(dataset_config, measure=True, greyscale=config['greyscale'], downsample=downsample)
-
-            output_shape = get_shape(dataset_config, measure=False, greyscale=config['greyscale'], downsample=downsample)
+            # optimizer = tf.keras.optimizers.get(config['optimizer']['identifier'], **config['optimizer']['kwargs'])         
 
 
             input = Input(shape=input_shape, name='input', dtype='float32')
@@ -233,7 +229,8 @@ def main(config):
                                 in_shape=input_shape, 
                                 out_shape=output_shape,
                                 global_batch_size=local_batch_size,#config['batch_size'],
-                                distributed_gpu=config['distributed_gpu'])
+                                distributed_gpu=config['distributed_gpu'],
+                                num_gpus=len(gpus))
 
             print(model.summary())
 
@@ -265,7 +262,7 @@ def main(config):
                     use_multiprocessing=True,
                     workers=config['workers'],
                     shuffle=True,
-                    verbose=1) # check if need = False
+                    verbose=config['verbose'])
 
             model.load_weights(checkpoint_path).expect_partial()
 

@@ -27,8 +27,8 @@ class DistributedLossCombiner(Loss):
         super().__init__(name=name, reduction=tf.keras.losses.Reduction.NONE, **kwargs)
 
     def call(self, y_true, y_pred):
-        per_sample_loss = tf.add_n([weight * loss(y_true, y_pred) for weight, loss in zip(self.loss_weights, self.losses)])
-        loss = tf.nn.compute_average_loss(per_sample_loss, global_batch_size=self.global_batch_size)
+        loss = tf.add_n([weight * tf.nn.compute_average_loss(loss(y_true, y_pred), global_batch_size=self.global_batch_size) for weight, loss in zip(self.loss_weights, self.losses)])
+
         # if model_losses:
         #     loss += tf.nn.scale_regularization_loss(tf.add_n(model_losses))
         return loss
@@ -47,6 +47,7 @@ class DistributedLoss(Loss):
         # if model_losses:
         #     loss += tf.nn.scale_regularization_loss(tf.add_n(model_losses))
         return loss
+
 
 class ReconstructionModel2(Model):
     def __init__(self, input_shape, perceptual_model, camera_inversion_layer=None, name='reconstruction_model'):
@@ -266,7 +267,7 @@ def get_perceptual_model(gen_model, excluded_layers=['input', 'non_separable_lay
 
 
 
-def get_metrics(config):
+def get_metrics(config, out_shape, batch_size):
     """get the metrics from the config
 
     Args:
@@ -277,15 +278,17 @@ def get_metrics(config):
     """
     metrics = []
     metric_weights = []
+
     for metric_id in config['metric'].keys():
         metric_config = config['metric'][metric_id]
-        metrics.append(get_loss_from_name(metric_id, metric_config, config))
+        metric_args = dict(shape=out_shape, batch_size=batch_size, model=metric_config['model']) if metric_id == 'lpips' else None
+        metrics.append(get_loss_from_name(metric_id, config['distributed_gpu'], metric_args))
         metric_weights.append(metric_config['weight'])
 
     return metrics, metric_weights
 
 
-def get_losses(config):
+def get_losses(config, out_shape, batch_size):
     """get the losses from the config
 
     Args:
@@ -307,17 +310,20 @@ def get_losses(config):
             weight = K.variable(weight)
             dynamic_weights.append((weight, loss_config['additive_factor']))
 
-        loss_dict.update({loss_id: (weight, get_loss_from_name(loss_id, loss_config, config))})
+        loss_args = dict(shape=out_shape, batch_size=batch_size, model=loss_config['model']) if loss_id == 'lpips' else None
+        loss_dict.update({loss_id: (weight, get_loss_from_name(loss_id, config['distributed_gpu'], loss_args))})
 
     return loss_dict, dynamic_weights
 
 
-def compile_model(gen_model, gen_optimizer, loss_dict, metrics, metric_weights, discr_args=None, in_shape=None, out_shape=None, global_batch_size=None, distributed_gpu=False):
+def compile_model(gen_model, gen_optimizer, loss_dict, metrics, metric_weights, discr_args=None, in_shape=None, out_shape=None, global_batch_size=None, distributed_gpu=False, num_gpus=1):
     loss_weights, losses = zip(*list(loss_dict.values()))
+
 
     if not distributed_gpu:
         total_loss = LossCombiner(losses, loss_weights, name='total')
     else :
+        global_batch_size = global_batch_size if discr_args else global_batch_size // num_gpus
         total_loss = DistributedLossCombiner(losses=losses, 
                                              loss_weights=loss_weights, 
                                              name='total', 
@@ -326,7 +332,6 @@ def compile_model(gen_model, gen_optimizer, loss_dict, metrics, metric_weights, 
         for m in metrics:
             new_metrics.append(DistributedLoss(m, m.name, global_batch_size=global_batch_size))
         metrics = new_metrics            
-
     
     if not discr_args:
 

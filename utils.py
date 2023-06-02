@@ -97,7 +97,7 @@ def get_config_from_yaml(path):
 # To store the resulted lpips if used in training and testing and not create 2 instances
 LPIPS_LOSS = None
 
-def get_lpips_loss(config, lpips_model, reduction):
+def get_lpips_loss(model, shape, batch_size, reduction):
     global LPIPS_LOSS
     if LPIPS_LOSS:
         return LPIPS_LOSS
@@ -105,7 +105,6 @@ def get_lpips_loss(config, lpips_model, reduction):
     if not os.path.isdir('lpips_losses'):
         os.makedirs('lpips_losses')
 
-    shape = get_shape(config['dataset'], measure=False, greyscale=config['greyscale'])
 
     def get_lpips_name():
         shape_str = ''
@@ -113,17 +112,17 @@ def get_lpips_loss(config, lpips_model, reduction):
             shape_str += '_' + str(s)
         channel = shape[-1]
         shape_str = '_' + str(channel) + shape_str
-        return 'lpips_' + lpips_model + '_shape' + shape_str
+        return 'lpips_' + model + '_shape' + shape_str
     
     lpips_path = os.path.join('lpips_losses', get_lpips_name())
 
     if not os.path.exists(lpips_path + '.pb'):
         from lpips import LPIPS
         print('creating lpips loss...')
-        lpips_loss = LPIPS(net=lpips_model)#.cuda()
+        lpips_loss = LPIPS(net=model)#.cuda()
         #change to satisfy with torch order : first channels
-        sample_input = (torch.randn(config['batch_size'], *shape, requires_grad=False),#.cuda(),
-                        torch.randn(config['batch_size'], *shape, requires_grad=False))#.cuda())
+        sample_input = (torch.randn(batch_size, *shape, requires_grad=False),#.cuda(),
+                        torch.randn(batch_size, *shape, requires_grad=False))#.cuda())
         to_tf_graph(lpips_loss, sample_input, lpips_path)
 
     else:
@@ -214,17 +213,18 @@ def extract_bayer(arr):
     # im1=skimage.transform.warp(im1,tform)
     return img
 
-def get_loss_from_name(name_id, loss_config, config=None):
-    reduction = tf.keras.losses.Reduction.NONE if config['distributed_gpu'] else tf.keras.losses.Reduction.AUTO
+def get_loss_from_name(name_id, distributed_gpu, loss_args=None):
+    reduction = tf.keras.losses.Reduction.NONE if distributed_gpu else tf.keras.losses.Reduction.AUTO
     if name_id == 'mse':
         # def custom_mse(y_true, y_pred):
         # return tf.math.reduce_mean(tf.square(y_true - y_pred), axis=[1, 2, 3], keepdims=True)
-        if config['distributed_gpu']:
+        if distributed_gpu:
             return LossNamer(lambda x, y: tf.math.reduce_mean(tf.square(x - y), axis=[1, 2, 3], keepdims=True),
                               'mse', reduction=reduction)
         return MeanSquaredError(name='mse', reduction=reduction)
     elif name_id == 'lpips':
-        return get_lpips_loss(config, loss_config['model'], reduction)
+        # lpips_model=loss_config['model'], shape=shape, batch_size=batch_size, 
+        return get_lpips_loss(reduction=reduction, **loss_args)
     elif name_id == 'ssim':
         return LossNamer(ssim, 'ssim', reduction=reduction)
     elif name_id == 'psnr':
