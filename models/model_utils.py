@@ -91,51 +91,6 @@ class ReconstructionModel2(Model):
 
 
 
-class ReconstructionModel(Model):
-    def __init__(self, input_shape, output_shape, unet_args, camera_inversion_args=None, model_name='reconstruction_model'):
-        super().__init__(name=model_name)
-        # self.unet_args = unet_args
-        self.in_shape = input_shape
-        self.camera_inversion_layer = get_camera_inversion_layer(camera_inversion_args) if camera_inversion_args else None
-
-        input = Input(shape=input_shape, name='input', dtype='float32')
-        if self.camera_inversion_layer:
-            input = self.camera_inversion_layer(input)
-        
-        self.perceptual_model = Model(inputs=[input], 
-                                      outputs=[u_net(input=input, **unet_args, out_shape=output_shape)],
-                                      name='perceptual_model')
-
-
-    def call(self, inputs):
-        if self.camera_inversion_layer:
-            inputs = self.camera_inversion_layer(inputs)
-
-        return self.perceptual_model(inputs)
-    
-    def summary(self, **kwargs):
-        cam_model = None
-        if self.camera_inversion_layer:
-            inp = Input(shape=self.in_shape, name='input', dtype='float32')
-
-            print(inp.shape)
-            out = self.camera_inversion_layer(inp)
-            cam_model = Model(inputs=[inp], outputs=[out])
-            cam_model.summary(**kwargs)
-        self.perceptual_model.summary(**kwargs)
-
-        if cam_model:
-            model = keras.Sequential([cam_model, self.perceptual_model])
-            line_length = 98
-            print("=" * line_length)
-            trainable_count = count_params(model.trainable_weights)
-            non_trainable_count = count_params(model.non_trainable_weights)
-
-            print(f"Total params: {trainable_count + non_trainable_count:,}")
-            print(f"Trainable params: {trainable_count:,}")
-            print(f"Non-trainable params: {non_trainable_count:,}")
-            print("_" * line_length)
-
     
 
 
@@ -342,7 +297,7 @@ def compile_model(gen_model, gen_optimizer, loss_dict, metrics, metric_weights, 
         model = gen_model
     
     else:
-        model = FlatNetGAN(discriminator=discr_args['model'], generator=gen_model, global_batch_size=global_batch_size)        
+        model = FlatNetGAN(discriminator=discr_args['model'], generator=gen_model, global_batch_size=global_batch_size, label_smoothing=discr_args['label_smoothing'])        
 
         model.compile(optimizer=gen_optimizer,
                     d_optimizer=discr_args['optimizer'],
@@ -454,3 +409,52 @@ class InversionLayerQuantizeConfig(QuantizeConfig):
 
     def get_config(self):
       return {}
+    
+
+
+
+
+class ReconstructionModel3(keras.Sequential):
+    def __init__(self, input_shape, perceptual_model, camera_inversion_layer=None, name='reconstruction_model'):
+        super().__init__(name=name)
+        # self.unet_args = unet_args
+        self.in_shape = input_shape
+
+        self.camera_inversion_layer = camera_inversion_layer
+        self.perceptual_model = perceptual_model
+        
+        layers = [Input(shape=input_shape, name='input', dtype='float32'), self.perceptual_model]
+        if self.camera_inversion_layer:
+            if isinstance(self.camera_inversion_layer, tf.keras.Model):
+                self.camera_inversion_layer.build(input_shape=self.in_shape)
+            else:
+                layers.insert(1, self.camera_inversion_layer)
+
+        super().__init__(name=name, layers=layers)
+
+
+    
+    def summary(self, **kwargs):
+        cam_model = None
+        if self.camera_inversion_layer:
+            inp = Input(shape=self.in_shape, name='input', dtype='float32')
+            out = self.camera_inversion_layer(inp)
+            cam_model = Model(inputs=[inp], outputs=[out])
+            if isinstance(self.camera_inversion_layer, tf.keras.Model):
+                self.camera_inversion_layer.summary(**kwargs)
+            else:
+                cam_model.summary(**kwargs)
+
+        self.perceptual_model.summary(**kwargs)
+
+        if cam_model:
+            model = keras.Sequential([cam_model, self.perceptual_model])
+            line_length = 98
+            print("=" * line_length)
+            trainable_count = count_params(model.trainable_weights)
+            non_trainable_count = count_params(model.non_trainable_weights)
+
+            print(f"Total params: {trainable_count + non_trainable_count:,}")
+            print(f"Trainable params: {trainable_count:,}")
+            print(f"Non-trainable params: {non_trainable_count:,}")
+            print("_" * line_length)

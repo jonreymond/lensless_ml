@@ -20,6 +20,7 @@ import io
 
 
 
+
 MAX_UINT16_VAL = 2**16 -1
 
 
@@ -249,83 +250,136 @@ def psnr(x, y):
 
 
 
+##########################################################################################
+############################ Model optimization visualization ############################
+##########################################################################################
+def get_size(file_path, unit='bytes'):
+    file_size = os.path.getsize(file_path)
+    exponents_map = {'bytes': 0, 'kb': 1, 'mb': 2, 'gb': 3}
+    if unit not in exponents_map:
+        raise ValueError("Must select from \
+        ['bytes', 'kb', 'mb', 'gb']")
+    else:
+        size = file_size / 1024 ** exponents_map[unit]
+        return round(size, 3)
     
 
-class ShmArray(np.ndarray):
+def get_gzipped_model_size(model, unit='bytes'):
+    import os
+    import zipfile
+    import tempfile
+    # It returns the size of the gzipped model in bytes.
+    _, keras_file = tempfile.mkstemp('.h5') 
 
-    def __new__(cls, shape, dtype=float, buffer=None, offset=0,
-                strides=None, order=None, shm=None):
-        obj = super(ShmArray, cls).__new__(cls, shape, dtype,
-                                           buffer, offset, strides,
-                                           order)
-        obj.shm = shm
-        return obj
+    # model = model.copy()
+    for i in range(len(model.weights)):
+        model.weights[i]._handle_name = model.weights[i].name + "_" + str(i).zfill(5)
 
-    def __array_finalize__(self, obj):
-        if obj is None: return
-        self.shm = getattr(obj, 'shm', None)
+    model.save(keras_file, include_optimizer=False)
+
+    for i in range(len(model.weights)):
+        model.weights[i]._handle_name = model.weights[i].name[:-6]
 
 
-
-
-class Tee(io.TextIOBase):
-    def __init__(self, *writers):
-        self.writers = writers
-
-    def write(self, data):
-        for writer in self.writers:
-            writer.write(data)
+    _, zipped_file = tempfile.mkstemp('.zip')
+    with zipfile.ZipFile(zipped_file, 'w', compression=zipfile.ZIP_DEFLATED) as f:
+        f.write(keras_file)
+    return get_size(zipped_file, unit)
 
 
 
 
-def shared_mem_multiprocessing(sequence, workers=8, queue_max_size=32):
 
-    class ErasingSharedMemory(shared_memory.SharedMemory):
 
-        def __del__(self):
-            super(ErasingSharedMemory, self).__del__()
-            self.unlink()
 
-    queue = Queue(maxsize=queue_max_size)
-    manager = managers.SharedMemoryManager()
-    manager.start()
 
-    def worker(sequence, idxs):
-        for i in idxs:
-            x, y = sequence[i]
 
-            shm = manager.SharedMemory(size=x.nbytes + y.nbytes)
-            a = np.ndarray(x.shape, dtype=x.dtype, buffer=shm.buf, offset=0)
-            b = np.ndarray(y.shape, dtype=y.dtype, buffer=shm.buf, offset=x.nbytes)
 
-            a[:] = x[:]
-            b[:] = y[:]
-            queue.put((a.shape, a.dtype, b.shape, b.dtype, shm.name))
-            shm.close()
-            del shm
 
-    idxs = np.array_split(np.arange(len(sequence)), workers)
-    args = zip([sequence] * workers, idxs)
-    processes = [Process(target=worker, args=(s, i)) for s, i in args]
-    _ = [p.start() for p in processes]
 
-    try:
-        for i in range(len(sequence)):
-            x_shape, x_dtype, y_shape, y_dtype, shm_name = queue.get(block=True)
-            existing_shm = ErasingSharedMemory(name=shm_name)
-            x = ShmArray(x_shape, dtype=x_dtype, buffer=existing_shm.buf, offset=0, shm=existing_shm)
-            y = ShmArray(y_shape, dtype=y_dtype, buffer=existing_shm.buf, offset=x.nbytes, shm=existing_shm)
-            yield x, y
-            # Memory will be automatically deleted when gc is triggered
-    finally:
-        print("Closing all the processed")
-        _ = [p.terminate() for p in processes]
-        print("Joining all the processed")
-        _ = [p.join() for p in processes]
-        queue.close()
-        manager.shutdown()
-        manager.join()
+
+
+
+
+
+
+
+
+# class ShmArray(np.ndarray):
+
+#     def __new__(cls, shape, dtype=float, buffer=None, offset=0,
+#                 strides=None, order=None, shm=None):
+#         obj = super(ShmArray, cls).__new__(cls, shape, dtype,
+#                                            buffer, offset, strides,
+#                                            order)
+#         obj.shm = shm
+#         return obj
+
+#     def __array_finalize__(self, obj):
+#         if obj is None: return
+#         self.shm = getattr(obj, 'shm', None)
+
+
+
+
+# class Tee(io.TextIOBase):
+#     def __init__(self, *writers):
+#         self.writers = writers
+
+#     def write(self, data):
+#         for writer in self.writers:
+#             writer.write(data)
+
+
+
+
+# def shared_mem_multiprocessing(sequence, workers=8, queue_max_size=32):
+
+#     class ErasingSharedMemory(shared_memory.SharedMemory):
+
+#         def __del__(self):
+#             super(ErasingSharedMemory, self).__del__()
+#             self.unlink()
+
+#     queue = Queue(maxsize=queue_max_size)
+#     manager = managers.SharedMemoryManager()
+#     manager.start()
+
+#     def worker(sequence, idxs):
+#         for i in idxs:
+#             x, y = sequence[i]
+
+#             shm = manager.SharedMemory(size=x.nbytes + y.nbytes)
+#             a = np.ndarray(x.shape, dtype=x.dtype, buffer=shm.buf, offset=0)
+#             b = np.ndarray(y.shape, dtype=y.dtype, buffer=shm.buf, offset=x.nbytes)
+
+#             a[:] = x[:]
+#             b[:] = y[:]
+#             queue.put((a.shape, a.dtype, b.shape, b.dtype, shm.name))
+#             shm.close()
+#             del shm
+
+#     idxs = np.array_split(np.arange(len(sequence)), workers)
+#     args = zip([sequence] * workers, idxs)
+#     processes = [Process(target=worker, args=(s, i)) for s, i in args]
+#     _ = [p.start() for p in processes]
+
+#     try:
+#         for i in range(len(sequence)):
+#             x_shape, x_dtype, y_shape, y_dtype, shm_name = queue.get(block=True)
+#             existing_shm = ErasingSharedMemory(name=shm_name)
+#             x = ShmArray(x_shape, dtype=x_dtype, buffer=existing_shm.buf, offset=0, shm=existing_shm)
+#             y = ShmArray(y_shape, dtype=y_dtype, buffer=existing_shm.buf, offset=x.nbytes, shm=existing_shm)
+#             yield x, y
+#             # Memory will be automatically deleted when gc is triggered
+#     finally:
+#         print("Closing all the processed")
+#         _ = [p.terminate() for p in processes]
+#         print("Joining all the processed")
+#         _ = [p.join() for p in processes]
+#         queue.close()
+#         manager.shutdown()
+#         manager.join()
 
 
 

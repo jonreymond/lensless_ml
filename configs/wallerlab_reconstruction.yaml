@@ -7,8 +7,13 @@ defaults:
   - _self_
 #will load specs of wallerlab_unet in default_models
 # model_name: unet128
-# model_name: wallerlab_unet
-model_name: unet64
+model_name: wallerlab_unet
+# model_name: unet64
+
+test: True
+
+# GAN
+use_discriminator: True
 
 # camera inversion
 use_camera_inversion: True
@@ -25,15 +30,20 @@ camera_inversion_args:
 # don't change
 distributed_gpu: True
 
-
 weight_pruning: False
-weight_clustering: True
-num_clusters: 16
+weight_clustering: False
+clustering_params:
+  number_of_clusters: 8
+  preserve_sparsity: False
+
 # Quantization Aware Training
 QAT: False
+QAT_scheme: "QAT" 
+# QAT_scheme: "PQAT" # pruning + QAT
+# QAT_scheme: "CQAT" # clustering + QAT
+# QAT_scheme: "PCQAT" # pruning + clustering + QAT
 
-# GAN
-use_discriminator: False
+
 
 workers: 16
 # queue_max_size: 32
@@ -41,9 +51,9 @@ workers: 16
 batch_size: 4
 #validation set percentage
 validation_split: 0.2
-epochs: 3
+epochs: 2
 # to be used to test the train pipeline : will only train on a subset of the dataset
-test: False
+
 
 device_conv: cuda    # "cuda" or "cpu", not yet implemented for cpu
   
@@ -56,13 +66,13 @@ use_tensorboard: True
 # may induce runtime overhead if set too high
 tensorboard_profile_batch: 20
 
-# debug_mode: True
 
 load_pretrained : False
 # flatnet
 # pretrained_model_path : /root/jreymond/lensless_ml/outputs/2023-05-10/07-02-20/tensorflow/checkpoints/
 # phlatnet
-pretrained_path : /root/jreymond/lensless_ml/outputs/2023-05-15/12-14-26/tensorflow/checkpoints/
+# pretrained_path : /root/jreymond/lensless_ml/outputs/2023-05-15/12-14-26/tensorflow/checkpoints/
+pretrained_path : /root/jreymond/lensless_ml/outputs/2023-06-05/15-58-34/tensorflow/models/wallerlab_unet.pb
 
 use_crop: True
 
@@ -118,6 +128,7 @@ lr_reducer:
 
 
 discriminator:
+  label_smoothing: 0.1
   optimizer:
     args:
       identifier: "adam"

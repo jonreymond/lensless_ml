@@ -13,24 +13,26 @@ import models.model_utils as model_utils
 ###############################################################################
 
 class DiscrLoss(Loss):
-    def __init__(self, name='discr_loss', **kwargs):
+    def __init__(self, name='discr_loss', label_smoothing=0, **kwargs):
         super().__init__(name=name, **kwargs)
+        self.label_smoothing = label_smoothing
        
 
     def call(self, y_true, y_pred):
-        return -tf.math.log(y_true) - tf.math.log(1 - y_pred)
+        return -tf.math.log(self.label_smoothing + y_true) - tf.math.log((1 - self.label_smoothing) - y_pred)
         # return tf.math.reduce_mean(-tf.math.log(y_true) - tf.math.log(1 - y_pred))
 
 
 
 class FlatNetGAN(Model):
-    def __init__(self, discriminator, generator, global_batch_size=None):
-        super(FlatNetGAN, self).__init__()
+    def __init__(self, discriminator, generator, global_batch_size=None, label_smoothing=0, **kwargs):
+        super(FlatNetGAN, self).__init__(**kwargs)
         self.discriminator = discriminator
         self.generator = generator
         self.global_batch_size = global_batch_size
+        self.label_smoothing = label_smoothing
         # losses
-        self.d_loss = model_utils.DistributedLoss(DiscrLoss(reduction=tf.keras.losses.Reduction.NONE),
+        self.d_loss = model_utils.DistributedLoss(DiscrLoss(label_smoothing=label_smoothing, reduction=tf.keras.losses.Reduction.NONE),
                                                   name='discr', 
                                                   global_batch_size=global_batch_size)
         
@@ -88,6 +90,21 @@ class FlatNetGAN(Model):
         
         return {"d": d_loss_res, "g": g_loss_res, "adv": adv_loss, "mse":mse_loss, "lpips" : perc_loss}
     
+    def summary(self, **kwargs):
+
+        self.generator.summary(**kwargs)
+        self.discriminator.summary(**kwargs)
+    
+    def get_config(self):
+        config = super().get_config()
+
+        config.update({
+            "discriminator": self.discriminator, 
+            "generator": self.generator, 
+            "global_batch_size": self.global_batch_size,
+            "label_smoothing": self.label_smoothing
+        })
+        return config
 
 
 

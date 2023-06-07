@@ -93,7 +93,7 @@ def main(config):
             dataset_config = config['dataset']
             indexes = np.arange(dataset_config['len'])
             if config['test']:
-                indexes = indexes[:500]
+                indexes = indexes[:80]
 
             train_indexes, val_indexes = train_test_split(indexes, 
                                                         test_size=config['validation_split'], 
@@ -182,42 +182,10 @@ def main(config):
                                      outputs=[u_net(input=input, **model_config, out_shape=output_shape)],
                                      name='perceptual_model')
             
-            gen_model = ReconstructionModel2(input_shape=input_shape, 
+            gen_model = ReconstructionModel3(input_shape=input_shape, 
                                             # output_shape=output_shape, 
                                             camera_inversion_layer=camera_inversion_layer,
                                             perceptual_model=perceptual_model)      
-
-            gen_model.build((None, *input_shape))
-
-            print(gen_model.summary())
-
-            if config['weight_pruning']:
-                gen_model = tf.keras.Sequential([Input(shape=input_shape, name='input', dtype='float32'),
-                                                tfmot.sparsity.keras.prune_low_magnitude(gen_model.camera_inversion_layer),
-                                                tfmot.sparsity.keras.prune_low_magnitude(gen_model.perceptual_model)])
-
-
-            if config['weight_clustering']:
-                gen_model = tf.keras.Sequential([Input(shape=input_shape, name='input', dtype='float32'),
-                                                tfmot.clustering.keras.cluster_weights(gen_model.camera_inversion_layer, 
-                                                                                        number_of_clusters=config['num_clusters']),
-                                                tfmot.clustering.keras.cluster_weights(gen_model.perceptual_model, 
-                                                                                        number_of_clusters=config['num_clusters'])])
-
-
-
-            
-            if config['QAT']:
-
-                qat_model = tf.keras.Sequential([quantize_annotate_layer(gen_model.camera_inversion_layer, InversionLayerQuantizeConfig()),
-                                             quantize_annotate_model(gen_model.perceptual_model)])
-                qat_model.build((None, *input_shape))
-                with quantize_scope({'InversionLayerQuantizeConfig': InversionLayerQuantizeConfig,
-                                     'FTLayer': FTLayer}):
-                    qat_model = quantize_apply(qat_model)
-                gen_model = qat_model
-
-                print('done')
 
 
             discr_args = None
@@ -229,9 +197,9 @@ def main(config):
                 d_opt_config.pop('identifier')
                 print(d_opt_config)
                 d_optimizer = D_opt_class(**d_opt_config)
-                print(d_model.summary())
+
                 adv_weight = config['discriminator']['weight']
-                discr_args = dict(model=d_model, optimizer=d_optimizer, adv_weight=adv_weight)
+                discr_args = dict(model=d_model, optimizer=d_optimizer, adv_weight=adv_weight, label_smoothing=config['discriminator']['label_smoothing'])
 
 
 
@@ -246,11 +214,81 @@ def main(config):
                                 global_batch_size=local_batch_size,#config['batch_size'],
                                 distributed_gpu=config['distributed_gpu'],
                                 num_gpus=len(gpus))
+            
+            assert int(config['weight_pruning']) + int(config['weight_clustering']) + int(config['QAT']) <= 1, 'At most one weight modification can be applied at a time'
 
-            print(model.summary())
-
+            if config['weight_pruning']:
+                prune_camera_inversion_layer = tfmot.sparsity.keras.prune_low_magnitude(gen_model.camera_inversion_layer)
+                prune_perceptual_model = tfmot.sparsity.keras.prune_low_magnitude(gen_model.perceptual_model)
+                gen_model = ReconstructionModel3(input_shape=input_shape,
+                                                camera_inversion_layer=prune_camera_inversion_layer,
+                                                perceptual_model=prune_perceptual_model)
             
 
+            if config['weight_clustering']:
+                cluster_camera_inversion_layer = tfmot.clustering.keras.cluster_weights(gen_model.camera_inversion_layer,
+                                                                                        **config['clustering_params'])
+                cluster_perceptual_model = tfmot.clustering.keras.cluster_weights(gen_model.perceptual_model,
+                                                                                        **config['clustering_params'])
+                gen_model = ReconstructionModel3(input_shape=input_shape,
+                                                camera_inversion_layer=cluster_camera_inversion_layer,
+                                                perceptual_model=cluster_perceptual_model)
+
+            
+            if config['QAT']:
+                qat_camera_inversion_layer = quantize_annotate_layer(gen_model.camera_inversion_layer, InversionLayerQuantizeConfig())
+                qat_perceptual_model = quantize_annotate_model(gen_model.perceptual_model)
+
+                # gen_model = ReconstructionModel3(input_shape=input_shape, 
+                #                         # output_shape=output_shape, 
+                #                             camera_inversion_layer=qat_camera_inversion_layer,
+                #                             perceptual_model=qat_perceptual_model)
+
+                qat_camera_inversion_layer = tf.keras.Sequential([Input(shape=input_shape, name='input', dtype='float32'),
+                                                qat_camera_inversion_layer])
+                
+                gen_model = qat_perceptual_model
+
+
+
+                with quantize_scope({'InversionLayerQuantizeConfig': InversionLayerQuantizeConfig,
+                                     'FTLayer': FTLayer}):
+                    scheme = dict(QAT=tfmot.quantization.keras.default_8bit.Default8BitQuantizeScheme(),
+                                  CQAT=tfmot.experimental.combine.Default8BitClusterPreserveQuantizeScheme(),
+                                  PQAT=tfmot.experimental.combine.Default8BitPrunePreserveQuantizeScheme(),
+                                  PCQAT=tfmot.experimental.combine.Default8BitClusterPreserveQuantizeScheme(preserve_sparsity=True))
+                    qat_perceptual_model = quantize_apply(gen_model, scheme=scheme[config['QAT_scheme']])
+                    qat_camera_inversion_layer = quantize_apply(qat_camera_inversion_layer, scheme=scheme[config['QAT_scheme']])
+
+                    # print(qat_camera_inversion_layer.summary())
+                    # print(qat_perceptual_model.summary())
+
+                    gen_model = ReconstructionModel3(input_shape=input_shape,
+                                                    camera_inversion_layer=qat_camera_inversion_layer,
+                                                    perceptual_model=qat_perceptual_model)
+                    print(gen_model.summary())
+                    sys.exit()
+                    
+
+
+            model = compile_model(gen_model=gen_model, 
+                                gen_optimizer=optimizer, 
+                                loss_dict=loss_dict, 
+                                metrics=metrics, 
+                                metric_weights=metric_weights, 
+                                discr_args=discr_args,
+                                in_shape=input_shape, 
+                                out_shape=output_shape,
+                                global_batch_size=local_batch_size,#config['batch_size'],
+                                distributed_gpu=config['distributed_gpu'],
+                                num_gpus=len(gpus))
+            
+            print('='*70)
+            print('='*70)
+            print('='*70)
+            print(model.summary())
+            
+            
 
             checkpoint_path = os.path.join(store_folder, 'checkpoints')
             if not os.path.isdir(checkpoint_path):
@@ -269,7 +307,7 @@ def main(config):
                 model.load_weights(config['pretrained_path']).expect_partial()
                 print(model.optimizer.get_config())
 
-            
+
             model.fit(train,
                     epochs=config['epochs'],
                     callbacks=callbacks,
@@ -286,12 +324,33 @@ def main(config):
                 store_path = os.path.join(store_folder, 'models')
                 if not os.path.isdir(store_path):
                     os.makedirs(store_path)
-                name =  config['model_name'] + '.pb'
+                
 
+                # save generator model
+                # name_gen = 'gen_' + config['model_name'] + '_.pb'
+                # tf.saved_model.save(gen_model, os.path.join(store_path, name_gen))
+
+                # 
+                name_gen = 'gen_' + config['model_name']
+                if config['weight_pruning']:
+                    name_gen += '_pruned'
+                    print('size before pruning: ', get_gzipped_model_size(gen_model, 'mb'), 'MB')
+                    gen_model = tfmot.sparsity.keras.strip_pruning(gen_model)
+                    print('size after pruning: ', get_gzipped_model_size(gen_model, 'mb'), 'MB')
+                    
+                if config['weight_clustering']:
+                    name_gen += '_clustered'
+                    print('size before clustering: ', get_gzipped_model_size(gen_model, 'mb'), 'MB')
+                    gen_model = tfmot.clustering.keras.strip_clustering(gen_model)
+                    print('size after clustering: ', get_gzipped_model_size(gen_model, 'mb'), 'MB')
+
+                name_gen += '.pb'
+
+                tf.keras.models.save_model(gen_model, os.path.join(store_path, name_gen), include_optimizer=False)
+
+                name =  config['model_name'] + '.pb'
                 tf.saved_model.save(model, os.path.join(store_path, name))
 
-                name_gen = 'gen_' + config['model_name'] + '_.pb'
-                tf.saved_model.save(gen_model, os.path.join(store_path, name_gen))
 
 
             sys.stdout = sys.__stdout__
