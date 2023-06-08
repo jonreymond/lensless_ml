@@ -43,7 +43,7 @@ import tensorflow as tf
 
 
 
-def get_discriminator(shape, filters, strides, kernel_size, activation='swish', use_groupnorm=False, num_groups=None):
+def get_discriminator(shape, filters, strides, kernel_size, activation='swish', use_groupnorm=False, num_groups=None, sigmoid_output=False):
     assert activation, "activation must be specified"
     input = Input(shape=shape, name="input")
     x = input
@@ -70,6 +70,7 @@ def get_discriminator(shape, filters, strides, kernel_size, activation='swish', 
     x = Conv2D(1, kernel_size=1, padding='same', activation='sigmoid')(x) # TODO: check padding
     x = Reshape(target_shape=[])(x)
 
-    x = Activation("sigmoid")(x)
+    if sigmoid_output:
+        x = Activation("sigmoid")(x)
     
     return Model(inputs=[input], outputs=[x], name='discriminator')

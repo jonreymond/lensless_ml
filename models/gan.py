@@ -6,6 +6,7 @@ from keras.losses import Loss
 from keras import optimizers
 
 import models.model_utils as model_utils
+import sys
 
 
 ###############################################################################
@@ -20,6 +21,8 @@ class DiscrLoss(Loss):
 
 
     def call(self, y_true, y_pred):
+        # put into range [0, 1] --> now both in [-1, 1]
+        # y_true = (y_true + 1) /2
         real_loss = self.cross_entropy(tf.ones_like(y_true) - self.label_smoothing, y_true)
         fake_loss = self.cross_entropy(tf.zeros_like(y_pred) + self.label_smoothing, y_pred)
         total_loss = real_loss + fake_loss
@@ -33,8 +36,10 @@ class AdversarialLoss(Loss):
         super().__init__(name=name, **kwargs)
         self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True, **kwargs)
 
-    def call(self, y_pred):
-        return self.cross_entropy(tf.ones_like(y_pred), y_pred)
+    def call(self, y_true, y_pred):
+        loss = self.cross_entropy(tf.ones_like(y_pred), y_pred)
+
+        return loss
 
 
 
@@ -46,12 +51,16 @@ class FlatNetGAN(Model):
         self.global_batch_size = global_batch_size
         self.label_smoothing = label_smoothing
         # losses
-        self.d_loss = model_utils.DistributedLoss(DiscrLoss(label_smoothing=label_smoothing, reduction=tf.keras.losses.Reduction.NONE),
-                                                  name='discr', 
-                                                  global_batch_size=global_batch_size)
-        self.g_adv_loss = model_utils.DistributedLoss(AdversarialLoss(reduction=tf.keras.losses.Reduction.NONE),
-                                                    name='adv',
-                                                    global_batch_size=global_batch_size)
+        # self.d_loss = model_utils.DistributedLoss(DiscrLoss(label_smoothing=label_smoothing, reduction=tf.keras.losses.Reduction.NONE),
+        #                                           name='discr', 
+        #                                           global_batch_size=global_batch_size)
+        
+        # self.g_adv_loss = model_utils.DistributedLoss(AdversarialLoss(reduction=tf.keras.losses.Reduction.NONE),
+        #                                             name='adv',
+        #                                             global_batch_size=global_batch_size)
+        # TODO : don't work with multi-gpu (check why return scalar even with reduction=None)
+        self.g_adv_loss = AdversarialLoss(name='adv')
+        self.d_loss = DiscrLoss(name='discr', label_smoothing=label_smoothing)
         
 
     def compile(self, optimizer, d_optimizer, lpips_loss, mse_loss, adv_weight, mse_weight, perc_weight, metrics):
@@ -79,7 +88,7 @@ class FlatNetGAN(Model):
             real_output = self.discriminator(real_img, training=True)
             fake_output = self.discriminator(gen_img, training=True)
 
-            adv_loss = self.g_adv_loss(fake_output)
+            adv_loss = self.g_adv_loss(None, fake_output)
             mse_loss = self.g_mse_loss(real_img, gen_img)
             perc_loss = self.lpips_loss(real_img, gen_img)
             gen_loss = self.adv_weight * adv_loss + self.mse_weight * mse_loss + self.perc_weight * perc_loss

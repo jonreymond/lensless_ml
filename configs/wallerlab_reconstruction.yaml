@@ -10,13 +10,13 @@ defaults:
 model_name: wallerlab_unet
 # model_name: unet64
 
-test: True
+test: False
 
 # GAN
 use_discriminator: True
 
 # camera inversion
-use_camera_inversion: True
+use_camera_inversion: False
 random_init: False
 camera_inversion_args:
   separable: None

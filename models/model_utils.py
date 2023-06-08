@@ -48,6 +48,9 @@ class DistributedLoss(Loss):
         # if model_losses:
         #     loss += tf.nn.scale_regularization_loss(tf.add_n(model_losses))
         return loss
+    
+
+
 
 
 class ReconstructionModel2(Model):
