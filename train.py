@@ -348,6 +348,24 @@ def main(config):
 
                 tf.keras.models.save_model(gen_model, os.path.join(store_path, name_gen), include_optimizer=False)
 
+                if gen_model.camera_inversion_layer:
+                    # save weights of camera inversion layer in numpy format
+                    # if not os.path.isdir(os.path.join(store_path, 'camera_inversion')):
+                    #     os.makedirs(os.path.join(store_path, 'camera_inversion'))
+                    # for weight in gen_model.camera_inversion_layer.get_list_weights():
+                    #     np.save(os.path.join(store_path, 'camera_inversion', weight.name + '.npy'), weight.numpy())
+                    camera_inversion = gen_model.camera_inversion_layer
+                    if not isinstance(camera_inversion, tf.keras.Sequential):
+                        camera_inversion = tf.keras.Sequential([Input(shape=input_shape, name='input', dtype='float32'),
+                                                                camera_inversion])
+                    tf.keras.models.save_model(camera_inversion, os.path.join(store_path, 'camera_inversion.pb'), include_optimizer=False)
+                
+                # save perceptual model
+                tf.keras.models.save_model(gen_model.perceptual_model, os.path.join(store_path, 'perceptual_model.pb'), include_optimizer=False)
+
+
+
+
                 name =  config['model_name'] + '.pb'
                 tf.saved_model.save(model, os.path.join(store_path, name))
 

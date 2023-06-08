@@ -287,7 +287,13 @@ def get_gzipped_model_size(model, unit='bytes'):
     return get_size(zipped_file, unit)
 
 
+class Tee(io.TextIOBase):
+    def __init__(self, *writers):
+        self.writers = writers
 
+    def write(self, data):
+        for writer in self.writers:
+            writer.write(data)
 
 
 
@@ -322,13 +328,7 @@ def get_gzipped_model_size(model, unit='bytes'):
 
 
 
-# class Tee(io.TextIOBase):
-#     def __init__(self, *writers):
-#         self.writers = writers
 
-#     def write(self, data):
-#         for writer in self.writers:
-#             writer.write(data)
 
 
 

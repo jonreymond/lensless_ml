@@ -7,11 +7,13 @@ import tensorflow as tf
 import itertools
 from collections import Counter
 from dataset import get_dataset
+from tf_dataset import *
 import sys
 import shutil
+import keras
   
   
-def representative_data_gen(reconstruct_config, num_samples=None):
+def representative_data_gen(reconstruct_config, camera_inversion=None, num_samples=None):
     '''TODO
     '''
     dataset_config = reconstruct_config['dataset']
@@ -19,8 +21,10 @@ def representative_data_gen(reconstruct_config, num_samples=None):
 
     np.random.seed(reconstruct_config['seed'])
     np.random.shuffle(indexes)
-    if num_samples is not None:
-        indexes = indexes[:num_samples]
+
+    num_samples = num_samples if num_samples else dataset_config['len']
+    
+    indexes = indexes[:num_samples]
     
     # Data Generator : set to 1 the batch size, as we want to evaluate each sample individually
     data_args = dict(batch_size=1, 
@@ -28,13 +32,18 @@ def representative_data_gen(reconstruct_config, num_samples=None):
                     use_crop=reconstruct_config['use_crop'], 
                     seed=reconstruct_config['seed'])
     
-    generator = get_dataset(reconstruct_config['dataset']['name'], dataset_config, indexes, data_args)
-
+    generator = get_tf_dataset(reconstruct_config['dataset']['name'], dataset_config, indexes, data_args)
+    
     # TODO: check if need to reshape
-    for x in generator:
-        print(x[0].shape)
-        break
-    return ([np.array(x[0], dtype=np.float32)] for x in generator)
+    # for x in generator:
+    #     print(x[0].shape)
+    #     break
+    # return ([np.array(x[0], dtype=np.float32)] for x in generator)
+    if camera_inversion:
+        return ([tf.dtypes.cast(camera_inversion(data), tf.float32)] for data, ground_truth in generator.take(num_samples))
+    else:
+        return ([tf.dtypes.cast(data, tf.float32)] for data, ground_truth in generator.take(num_samples))
+
 
 
 def create_tflite_interpreter(export_dir, with_optimization, with_quantization, store_path=None, repr_data_gen=None, use_debug=False):
@@ -137,6 +146,8 @@ def tflite_to_cc(name_model, tflite_path):
 
 
 
+
+
 @hydra.main(version_base=None, config_path="configs", config_name="tflite")
 def main(config):
     '''Main function to transform a tensorflow model to a tflite model, and then to a .cc + .h file
@@ -146,16 +157,28 @@ def main(config):
 
     num_samples = config['num_samples'] if config['num_samples'] != 'None' else None
     
-    repr_data_gen = representative_data_gen(config, num_samples=num_samples)
+    
+    camera_inversion_model_path = os.path.join(config['store_folder'], 'tensorflow', 'models', 'camera_inversion.pb')
+    camera_inversion_model = None
+    if os.path.exists(camera_inversion_model_path):
+        camera_inversion_model = keras.models.load_model(camera_inversion_model_path)
 
+    repr_data_gen = representative_data_gen(config, num_samples=num_samples, camera_inversion=camera_inversion_model)
 
-    model_path = os.path.join(config['store_folder'], 'tensorflow', 'models', config['model_name'] + '.pb')
+    perceptual_model_path = os.path.join(config['store_folder'], 'tensorflow', 'models', 'perceptual_model.pb')
     tflite_folder = os.path.join(config['store_folder'], 'tflite')
     tflite_path = os.path.join(tflite_folder, config['model_name'] + '.tflite')
     if not os.path.exists(os.path.dirname(tflite_path)):
         os.makedirs(os.path.dirname(tflite_path))
+
+
+    # model = keras.models.load_model(model_path)
+    # print(model.summary())
+    # print(model.perceptual_model)
+    # print(model.perceptual_model.summary())
+    # sys.exit()
     
-    tflite_interp_quant = create_tflite_interpreter(model_path, 
+    tflite_interp_quant = create_tflite_interpreter(perceptual_model_path, 
                                                     with_optimization=config['with_optimization'], 
                                                     with_quantization=config['with_quantization'], 
                                                     store_path=tflite_path,

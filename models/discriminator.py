@@ -43,7 +43,8 @@ import tensorflow as tf
 
 
 
-def get_discriminator(shape, filters, strides, kernel_size, activation, use_groupnorm, num_groups=None):
+def get_discriminator(shape, filters, strides, kernel_size, activation='swish', use_groupnorm=False, num_groups=None):
+    assert activation, "activation must be specified"
     input = Input(shape=shape, name="input")
     x = input
 

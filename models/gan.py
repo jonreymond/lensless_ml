@@ -16,11 +16,25 @@ class DiscrLoss(Loss):
     def __init__(self, name='discr_loss', label_smoothing=0, **kwargs):
         super().__init__(name=name, **kwargs)
         self.label_smoothing = label_smoothing
-       
+        self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True, **kwargs)
+
 
     def call(self, y_true, y_pred):
-        return -tf.math.log(self.label_smoothing + y_true) - tf.math.log((1 - self.label_smoothing) - y_pred)
+        real_loss = self.cross_entropy(tf.ones_like(y_true) - self.label_smoothing, y_true)
+        fake_loss = self.cross_entropy(tf.zeros_like(y_pred) + self.label_smoothing, y_pred)
+        total_loss = real_loss + fake_loss
+        return total_loss
+    
+        # return -tf.math.log(self.label_smoothing + y_true) - tf.math.log((1 - self.label_smoothing) - y_pred)
         # return tf.math.reduce_mean(-tf.math.log(y_true) - tf.math.log(1 - y_pred))
+
+class AdversarialLoss(Loss):
+    def __init__(self, name='adv_loss', **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True, **kwargs)
+
+    def call(self, y_pred):
+        return self.cross_entropy(tf.ones_like(y_pred), y_pred)
 
 
 
@@ -35,6 +49,9 @@ class FlatNetGAN(Model):
         self.d_loss = model_utils.DistributedLoss(DiscrLoss(label_smoothing=label_smoothing, reduction=tf.keras.losses.Reduction.NONE),
                                                   name='discr', 
                                                   global_batch_size=global_batch_size)
+        self.g_adv_loss = model_utils.DistributedLoss(AdversarialLoss(reduction=tf.keras.losses.Reduction.NONE),
+                                                    name='adv',
+                                                    global_batch_size=global_batch_size)
         
 
     def compile(self, optimizer, d_optimizer, lpips_loss, mse_loss, adv_weight, mse_weight, perc_weight, metrics):
@@ -57,38 +74,26 @@ class FlatNetGAN(Model):
     def train_step(self, inputs):
         sensor_img, real_img = inputs
 
-        # Discriminator training
-        gen_img = self.generator(sensor_img)
-        with tf.GradientTape() as tape:
-            pred_gen = self.discriminator(gen_img)
-            # tf.print('pred gen', pred_gen)
-            pred_real = self.discriminator(real_img)
-            # tf.print('pred real', pred_real)
-            d_loss_res = self.d_loss(pred_real, pred_gen)
+        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+            gen_img = self.generator(sensor_img, training=True)
+            real_output = self.discriminator(real_img, training=True)
+            fake_output = self.discriminator(gen_img, training=True)
 
-        grads = tape.gradient(d_loss_res, self.discriminator.trainable_weights)
-        self.d_optimizer.apply_gradients(zip(grads, self.discriminator.trainable_weights))
-
-
-        # Generator training
-        with tf.GradientTape() as tape:
-            gen_img = self.generator(sensor_img)
-            adv_loss = tf.nn.compute_average_loss(-tf.math.log(self.discriminator(gen_img)), global_batch_size=self.global_batch_size)
+            adv_loss = self.g_adv_loss(fake_output)
             mse_loss = self.g_mse_loss(real_img, gen_img)
             perc_loss = self.lpips_loss(real_img, gen_img)
+            gen_loss = self.adv_weight * adv_loss + self.mse_weight * mse_loss + self.perc_weight * perc_loss
+
+            disc_loss = self.d_loss(real_output, fake_output)
             
-            g_loss_res = self.adv_weight * adv_loss + self.mse_weight * mse_loss + self.perc_weight * perc_loss
 
-        grads = tape.gradient(g_loss_res, self.generator.trainable_weights)
-        self.g_optimizer.apply_gradients(zip(grads, self.generator.trainable_weights))
+        gen_gradients = gen_tape.gradient(gen_loss, self.generator.trainable_variables)
+        disc_gradients = disc_tape.gradient(disc_loss, self.discriminator.trainable_variables)
 
-        # tf.print('d_loss', d_loss_res)
-        # tf.print('g_loss', g_loss_res)
-        # tf.print('adv_loss', adv_loss)
-        # tf.print('mse_loss', mse_loss)
-        # tf.print('perc_loss', perc_loss)
+        self.g_optimizer.apply_gradients(zip(gen_gradients, self.generator.trainable_variables))
+        self.d_optimizer.apply_gradients(zip(disc_gradients, self.discriminator.trainable_variables))
         
-        return {"d": d_loss_res, "g": g_loss_res, "adv": adv_loss, "mse":mse_loss, "lpips" : perc_loss}
+        return {"d": disc_loss, "g": gen_loss, "adv": adv_loss, "mse":mse_loss, "lpips" : perc_loss}
     
     def summary(self, **kwargs):
 

@@ -6,3 +6,4 @@ temp/
 tensorboard_results/
 sample_imgs/
 figs/
+tflite_models/
