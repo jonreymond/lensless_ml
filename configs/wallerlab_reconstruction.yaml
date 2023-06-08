@@ -12,11 +12,12 @@ model_name: wallerlab_unet
 
 test: False
 
+
 # GAN
 use_discriminator: True
 
 # camera inversion
-use_camera_inversion: False
+use_camera_inversion: True
 random_init: False
 camera_inversion_args:
   separable: None
@@ -51,7 +52,7 @@ workers: 16
 batch_size: 4
 #validation set percentage
 validation_split: 0.2
-epochs: 2
+epochs: 75
 # to be used to test the train pipeline : will only train on a subset of the dataset
 
 
@@ -77,7 +78,7 @@ pretrained_path : /root/jreymond/lensless_ml/outputs/2023-06-05/15-58-34/tensorf
 use_crop: True
 
 seed: 1   # Note : will not result in a deterministic output if use cuda device
-verbose: 1
+verbose: 2
 
 optimizer:
   # name of optimizer technique desired
@@ -128,7 +129,7 @@ lr_reducer:
 
 
 discriminator:
-  label_smoothing: 0.1
+  label_smoothing: 0.0
   optimizer:
     args:
       identifier: "adam"
@@ -162,6 +163,7 @@ discriminator:
     use_groupnorm: False
     #num for groupnorm
     num_groups: 4
+    sigmoid_output: False
 
 
 

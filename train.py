@@ -68,9 +68,10 @@ def main(config):
     # with strategy.scope():
     for i in range(1):
         
-        # with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
-        #     sys.stdout = Tee(sys.stdout, f)
-        #     sys.stderr = Tee(sys.stderr, f)
+        with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
+            sys.stdout = Tee(sys.stdout, f)
+            sys.stderr = Tee(sys.stderr, f)
+
 
         # for j in range(1):
             print('number of gpus: ', len(gpus))
