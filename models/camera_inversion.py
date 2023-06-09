@@ -204,11 +204,7 @@ class FTLayer(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer, tfmot.c
         return tf.signal.rfft2d(w)
 
 
-    def call(self, x):
-        
-        a = ZeroPadding2D(((self._start_idx_input[0], self._end_idx_input[0]),
-                            (self._start_idx_input[1], self._end_idx_input[1])))(x)
-        
+    def call(self, x):        
         x = tf.pad(x, ((0,0),
                        (self._start_idx_input[0], self._end_idx_input[0]),
                        (self._start_idx_input[1], self._end_idx_input[1]), (0,0)), "CONSTANT")

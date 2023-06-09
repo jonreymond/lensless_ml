@@ -6,18 +6,18 @@ defaults:
   - model: default_models
   - _self_
 #will load specs of wallerlab_unet in default_models
-# model_name: unet128
-model_name: wallerlab_unet
+model_name: unet128
+# model_name: wallerlab_unet
 # model_name: unet64
 
-test: False
+test: True
 
 
 # GAN
-use_discriminator: True
+use_discriminator: False
 
 # camera inversion
-use_camera_inversion: True
+use_camera_inversion: False
 random_init: False
 camera_inversion_args:
   separable: None
@@ -52,11 +52,11 @@ workers: 16
 batch_size: 4
 #validation set percentage
 validation_split: 0.2
-epochs: 75
+epochs: 2
 # to be used to test the train pipeline : will only train on a subset of the dataset
 
 
-device_conv: cuda    # "cuda" or "cpu", not yet implemented for cpu
+# device_conv: cuda    # "cuda" or "cpu", not yet implemented for cpu
   
 greyscale: False
 
