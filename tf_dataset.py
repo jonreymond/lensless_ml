@@ -5,11 +5,11 @@ from tensorflow.data import Dataset
 import tensorflow as tf
 import glob
 
-MAX_UINT8_VAL = 2**8 -1
+MAX_UINT8_VAL = 2**8
 
 class DataLoader(ABC):
     'Generates data for Keras'
-    def __init__(self, dataset_config, indexes, batch_size, greyscale=False, seed=1):
+    def __init__(self, dataset_config, indexes, batch_size, input_shape=None, output_shape=None, greyscale=False, seed=1):
         super().__init__()
         'Initialization'
         self.data_conf = dataset_config
@@ -20,8 +20,8 @@ class DataLoader(ABC):
         self.x_filenames = x_filenames[indexes]
         self.y_filenames = y_filenames[indexes]
 
-        self.in_dim = get_shape(dataset_config, measure=True, greyscale=greyscale)
-        self.out_dim = get_shape(dataset_config, measure=False, greyscale=greyscale)
+        self.in_dim = input_shape if input_shape else get_shape(dataset_config, measure=True, greyscale=greyscale)
+        self.out_dim = output_shape if output_shape else get_shape(dataset_config, measure=False, greyscale=greyscale)
         
         self.num_files = len(indexes)
         self.indexes = np.arange(self.num_files)
@@ -164,8 +164,8 @@ def np_load(filename):
 
 class WallerlabDaloader(DataLoader):
 
-    def __init__(self, dataset_config, indexes, batch_size, greyscale=False, use_crop=True, seed=1):
-        super().__init__(dataset_config, indexes, batch_size, greyscale, seed)
+    def __init__(self, dataset_config, indexes, batch_size, input_shape=None, output_shape=None, greyscale=False, use_crop=True, seed=1):
+        super().__init__(dataset_config, indexes, batch_size, input_shape, output_shape, greyscale, seed)
         self.crop = dataset_config['crop']['measurements'] if use_crop else None
         # self.raw_shape_measure = np.load(self.x_filenames[0]).shape
         # self.raw_shape_truth = np.load(self.y_filenames[0]).shape
@@ -198,7 +198,7 @@ class WallerlabDaloader(DataLoader):
 
     
     def _map_y(self, data_truth):
-        data_truth = self._map_x(data_truth,)
+        data_truth = self._map_x(data_truth)
         if self.crop:
             data_truth = data_truth.map(lambda item: item[self.crop['low_h']: self.crop['high_h'],
                                                         self.crop['low_w']: self.crop['high_w'], :],
@@ -217,69 +217,67 @@ class WallerlabDaloader(DataLoader):
 
 
 class PhlatnetDataLoader(DataLoader):
-    def __init__(self, dataset_config, indexes, batch_size, greyscale=False, use_crop=True, seed=1):
-        self.crop = dataset_config['crop']['measurements'] if use_crop else None
-        self.use_cropped_dataset = dataset_config['use_cropped_dataset']
-        self.downsample = dataset_config['downsample']
-        super().__init__(dataset_config, indexes, batch_size, greyscale, seed)
+    def __init__(self, dataset_config, indexes, batch_size, input_shape=None, output_shape=None, greyscale=False, use_crop=False, seed=1):
+        self.resize = input_shape
+        super().__init__(dataset_config, indexes, batch_size, input_shape, output_shape, greyscale, seed)
         
-        # self.raw_shape_measure = np.load(self.x_filenames[0]).shape
-        # self.raw_shape_truth = np.load(self.y_filenames[0]).shape
+
 
 
     def _get_filenames(self):
-        if not self.use_cropped_dataset:
-            dir_x = os.path.join(self.data_conf['path'], self.data_conf['measure_folder'])
-            x_filenames = sorted(glob.glob(dir_x + '/*/*'), key=lambda f: os.path.basename(f).replace('.png','').replace('.', ''))
-            x_names = [os.path.basename(f).replace('.png','').replace('.', '') for f in x_filenames]
-        else:
-            dir_x = os.path.join(self.data_conf['path'], self.data_conf['measure_cropped_folder'])
-            x_filenames = sorted(glob.glob(dir_x + '/*/*'), key=lambda f: os.path.basename(f).replace('.npy',''))
-            x_names = [os.path.basename(f).replace('.npy','') for f in x_filenames]
-        
+        def get_name(filename, suffix):
+            return os.path.basename(filename).replace(suffix,'')
+        # if not self.use_cropped_dataset:
+        #     dir_x = os.path.join(self.data_conf['path'], self.data_conf['measure_folder'])
+        #     x_filenames = sorted(glob.glob(dir_x + '/*/*'), key=lambda f: os.path.basename(f).replace('.png','').replace('.', ''))
+        #     x_names = [os.path.basename(f).replace('.png','').replace('.', '') for f in x_filenames]
+        # else:
+        dir_x = os.path.join(self.data_conf['path'], self.data_conf['measure_folder'])
+        x_filenames = sorted(glob.glob(dir_x + '/*/*'), key=lambda f: get_name(f, suffix='.npy'))
+        x_names = [os.path.basename(f).replace('.npy','') for f in x_filenames]
+    
         dir_y = os.path.join(self.data_conf['path'], self.data_conf['truth_folder'])
-        y_filenames = sorted(glob.glob(dir_y + '/*/*'), key=lambda f: os.path.basename(f).replace('.JPEG',''))
-        y_names = [os.path.basename(f).replace('.JPEG','') for f in y_filenames]
+        y_filenames = sorted(glob.glob(dir_y + '/*/*'), key=lambda f: get_name(f, suffix='.JPEG'))
+        y_names = [get_name(f, suffix='.JPEG') for f in y_filenames]
 
-        print(len(set(x_names).symmetric_difference(set(y_names))))
-        print(len(y_names), len(x_names))
         if not x_names == y_names:
             print('some of the samples do not match : list(groundtruths) != list(measurements), ',
                   'x length:', len(x_names), 'y length:', len(y_names), 
                   'diff length:', len(set(x_names).symmetric_difference(set(y_names))))
-            y_filenames = [f for f in y_filenames if os.path.basename(f).replace('.JPEG','') in x_names]
+            
+            y_filenames = [f for f in y_filenames if get_name(f, suffix='.JPEG') in x_names]
 
-            y_names = [os.path.basename(f).replace('.JPEG','') for f in y_filenames]
-            print('final length:'  , len(y_names))
-            assert x_names == y_names, 'some of the samples do not match : list(groundtruths) != list(measurements), '
+
+        y_names = [get_name(f, suffix='.JPEG') for f in y_filenames]
+        print('final length:'  , len(y_names))
+        assert x_names == y_names, 'some of the samples do not match : list(groundtruths) != list(measurements), '
 
         return np.asarray(x_filenames), np.asarray(y_filenames)
 
+    
+        
     
     
     def _map_x(self, data_measure):
          # -1 :return the loaded image as is (with alpha channel, otherwise it gets cropped) 
         # read as uint16, channel last
-        if not self.use_cropped_dataset:
-            raise NotImplementedError
-            # data_measure = data_measure.map(lambda item: tf.numpy_function(extract_bayer_raw, [item], tf.float32))
-            # data_measure = data_measure.map(lambda item: item[:, 
-            #                                               self.crop['low_h']: self.crop['high_h'],
-            #                                             self.crop['low_w']: self.crop['high_w']],
-            #                                             num_parallel_calls=tf.data.AUTOTUNE)
-        else:
-            data_measure = data_measure.map(lambda item: tf.cast(tf.numpy_function(np_load, [item], tf.uint16) / MAX_UINT16_VAL, tf.float32), 
-                                            num_parallel_calls=tf.data.AUTOTUNE)         
+        # def np_resize(self, x):
+        #     return np.resize(x, self.resize)
+        def load_resize(filename):
+            img = np.load(filename)
+            if self.resize:
+                img = cv2.resize(img, (self.resize[1], self.resize[0]))
+            return img
 
-        data_measure = data_measure.map(lambda item: (item -0.5) * 2, 
-                                        num_parallel_calls=tf.data.AUTOTUNE)
-        # print([self.in_dim[0] , self.in_dim[1]])
-        # data_measure = data_measure.map(lambda item: tf.image.resize(item, 
-        #                                                              size=[self.in_dim[0] // self.downsample , self.in_dim[1] //self.downsample]
-        #                                                                   ),
+    
+        data_measure = data_measure.map(lambda item: tf.cast(tf.numpy_function(load_resize, [item], tf.uint16)/ MAX_UINT8_VAL, tf.float32), 
+                                            num_parallel_calls=tf.data.AUTOTUNE)
+                   
+
+            
+        # data_measure = data_measure.map(lambda item: (item -0.5) * 2, 
         #                                 num_parallel_calls=tf.data.AUTOTUNE)
-        data_measure = data_measure.map(lambda item: item[::self.downsample, ::self.downsample, :],
-                                        num_parallel_calls=tf.data.AUTOTUNE)
+
         return data_measure
 
 
@@ -302,8 +300,8 @@ class PhlatnetDataLoader(DataLoader):
         
         # data_truth = data_truth.map(lambda item: (tf.transpose(item, perm=[2, 0, 1]) -0.5) * 2, 
         #                                 num_parallel_calls=tf.data.AUTOTUNE)
-        data_truth = data_truth.map(lambda item: (item -0.5) * 2, 
-                                        num_parallel_calls=tf.data.AUTOTUNE)
+        # data_truth = data_truth.map(lambda item: (item -0.5) * 2, 
+        #                                 num_parallel_calls=tf.data.AUTOTUNE)
         return data_truth
     
 

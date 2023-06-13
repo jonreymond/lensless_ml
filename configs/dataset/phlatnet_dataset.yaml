@@ -2,31 +2,29 @@
 name: 'phlatnet'
 
 
-path: '/scratch/jreymond/phlatnet'
+path: '/dev/shm/jreymond/phlatnet'
 truth_folder: 'orig'
 
-measure_folder: 'imagenet_caps_384_12bit_Feb_19'
+# measure_folder: 'imagenet_caps_384_12bit_Feb_19'
+measure_folder: measures_downsampled
 
-# if use the preprocessed dataset
-use_cropped_dataset : True
-# measure_cropped_folder: measures_cropped
-measure_cropped_folder: measures_full_cropped
+
 
 truth_format: JPEG
-measure_format: png
+measure_format: npy #png
 len: 9791 # normally 10000, but some measurements are not available
 
 mask_path : 'TODO'
 
 psf:
-  path: /scratch/jreymond/phlatnet/phase_psf/psf_raw.npy
+  path: /dev/shm/jreymond/phlatnet/phase_psf/psf_rgb.npy
   # path: /scratch/jreymond/phlatnet/phase_psf/psf_cropped.npy
-  height: 1280 
-  width: 1408
-  crop_size_x: 1280 
-  crop_size_y: 1408 
-  centre_x: 808
-  centre_y: 965
+  # height: 1280 
+  # width: 1408
+  # crop_size_x: 1280 
+  # crop_size_y: 1408 
+  # centre_x: 808
+  # centre_y: 965
 
 raw_truth_height: 344
 raw_truth_width: 379
@@ -37,10 +35,10 @@ truth_channels: 3
 # output of measurement after cropping
 # measure_height: 1280
 # measure_width: 1408
-measure_height: 608
-measure_width: 864
-# Bayer measurements
-measure_channels: 4
+measure_height: 759
+measure_width: 1006
+# Bayer measurements to RGB
+measure_channels: 3
 
 padding: False
 
@@ -48,10 +46,7 @@ type_mask: "non_separable"
   
 rotate_measurements: False
 
-# directly use measure as output shape
-center_crop: True
 
-downsample: 2
 
 crop:
   # center crop where center_h: 808 and center_w : 965

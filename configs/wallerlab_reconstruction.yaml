@@ -6,12 +6,15 @@ defaults:
   - model: default_models
   - _self_
 #will load specs of wallerlab_unet in default_models
-model_name: unet128
+# model_name: unet128
 # model_name: wallerlab_unet
-# model_name: unet64
+model_name: unet64
 
-test: True
+test: False
 
+resize_input: True
+resize_input_height: 384
+resize_input_width: 384
 
 # GAN
 use_discriminator: False
@@ -52,7 +55,7 @@ workers: 16
 batch_size: 4
 #validation set percentage
 validation_split: 0.2
-epochs: 2
+epochs: 75
 # to be used to test the train pipeline : will only train on a subset of the dataset
 
 
@@ -78,12 +81,12 @@ pretrained_path : /root/jreymond/lensless_ml/outputs/2023-06-05/15-58-34/tensorf
 use_crop: True
 
 seed: 1   # Note : will not result in a deterministic output if use cuda device
-verbose: 2
+verbose: 1
 
 optimizer:
   # name of optimizer technique desired
   identifier: "adam"
-  learning_rate: 0.0001
+  learning_rate: 0.001
 
 
 loss:

@@ -21,7 +21,6 @@ measure_height: 270
 measure_width: 480
 measure_channels: 3
 
-downsample: 1
 
 # out_image[60:,62:-38,:]
 crop:

@@ -158,9 +158,10 @@ class FTLayer(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer, tfmot.c
         
         psf_shape = np.asarray(self.psf_shape[:2])
         in_shape = np.asarray(input_shape[1:3])
+        print('psf shape', psf_shape)
+        print('in shape', in_shape)
         
-        
-        assert np.all(psf_shape >= in_shape), 'PSF shape must be greater than input shape'
+        assert np.all(psf_shape == in_shape), 'PSF shape must be greater than input shape'
 
         target_shape = 2 * in_shape - 1 if self.pad else psf_shape
 
@@ -251,9 +252,9 @@ class FTLayer(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer, tfmot.c
 ##############################################################################################################
 
 MAX_UINT8_VAL = 2**8 -1
+MAX_UINT16_VAL = 2**16 -1
 
-
-def get_psf(data_config):
+def get_psf(data_config, input_shape=None):
     psf_config = data_config['psf']
     if data_config['name'] == 'wallerlab':
         psf = (np.array(Image.open(psf_config['path'])) / MAX_UINT8_VAL).astype('float32')
@@ -262,7 +263,10 @@ def get_psf(data_config):
     elif data_config['name'] == 'phlatnet':
         psf = np.load(psf_config['path'])
 
-        psf = psf[:: data_config['downsample'], :: data_config['downsample'], :]
+        # psf = psf[:: data_config['downsample'], :: data_config['downsample'], :]
+        if input_shape is not None:
+            psf = cv2.resize(psf, (input_shape[1], input_shape[0]))
+            print('psf shape', psf.shape, 'psf type', psf.dtype)
 
         return psf
     
@@ -283,22 +287,22 @@ def get_separable_init_matrices(config):
 
 
 
-def get_camera_inversion_layer(data_config, camera_inversion_args=None):
-    if camera_inversion_args['use_random_init']:
-        raise NotImplementedError('Random init not implemented yet')
+# def get_camera_inversion_layer(data_config, input_shape=None, camera_inversion_args=None):
+#     if camera_inversion_args['use_random_init']:
+#         raise NotImplementedError('Random init not implemented yet')
     
-    camera_inversion_args = dict(camera_inversion_args)
-    camera_inversion_args.pop('use_psf_init')
+#     camera_inversion_args = dict(camera_inversion_args)
+#     camera_inversion_args.pop('use_psf_init')
 
-    if data_config['type_mask'] == 'separable':
-        phi_l, phi_r = get_separable_init_matrices(data_config)
+#     if data_config['type_mask'] == 'separable':
+#         phi_l, phi_r = get_separable_init_matrices(data_config)
 
-        return SeparableLayer(phi_l.T, phi_r)
+#         return SeparableLayer(phi_l.T, phi_r)
         
-    else :
-        psf = get_psf(data_config)
-        # TODO : add rgb2gray
-        return FTLayer(**camera_inversion_args, psf=psf)
+#     else :
+#         psf = get_psf(data_config, input_shape=input_shape)
+#         # TODO : add rgb2gray
+#         return FTLayer(**camera_inversion_args, psf=psf)
 
 
 

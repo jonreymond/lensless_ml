@@ -4,11 +4,11 @@ import time
 import sys
 
 # with inversion
-# model_path = '/root/jreymond/lensless_ml/outputs/2023-06-06/06-56-56/tensorflow/models/wallerlab_unet.pb'
+model_path = '/root/jreymond/lensless_ml/outputs/2023-06-06/06-56-56/tensorflow/models/wallerlab_unet.pb'
 # without_inversion
-model_path = '/root/jreymond/lensless_ml/outputs/2023-06-02/10-40-15/tensorflow/models/wallerlab_unet.pb'
+# model_path = '/root/jreymond/lensless_ml/outputs/2023-06-02/10-40-15/tensorflow/models/wallerlab_unet.pb'
 
-use_gpu = False
+use_gpu = True
 
 
 if use_gpu:

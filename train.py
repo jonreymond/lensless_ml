@@ -68,9 +68,9 @@ def main(config):
     # with strategy.scope():
     for i in range(1):
         
-        with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
-            sys.stdout = Tee(sys.stdout, f)
-            sys.stderr = Tee(sys.stderr, f)
+        # with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
+        #     sys.stdout = Tee(sys.stdout, f)
+        #     sys.stderr = Tee(sys.stderr, f)
 
 
         # for j in range(1):
@@ -102,10 +102,19 @@ def main(config):
                                                         random_state=config['seed'])
             
             # Data Generators
+
+            resize_input_shape = None
+            if config['resize_input'] and config['dataset']['name'] != 'phlatnet':
+                raise NotImplementedError('Resize input is not implemented for this dataset')
+
             data_args = dict(batch_size=local_batch_size,#config['batch_size'], 
                             greyscale=config['greyscale'],
                             use_crop=config['use_crop'], 
                             seed=config['seed'])
+            
+            if config['resize_input']:
+                resize_input_shape = (config['resize_input_height'], config['resize_input_width'])
+                data_args['input_shape'] = resize_input_shape
             
 
             print('train length: ',len(train_indexes), ', val length: ', len(val_indexes))
@@ -133,10 +142,9 @@ def main(config):
             # train = tf.data.Dataset.from_generator(train)
             # val = tf.data.Dataset.from_generator(train)
 
-            downsample = config['dataset']['downsample']
-            input_shape = get_shape(dataset_config, measure=True, greyscale=config['greyscale'], downsample=downsample)
+            input_shape = get_shape(dataset_config, measure=True, greyscale=config['greyscale'], resize_input_shape=resize_input_shape)
 
-            output_shape = get_shape(dataset_config, measure=False, greyscale=config['greyscale'], downsample=downsample)
+            output_shape = get_shape(dataset_config, measure=False, greyscale=config['greyscale'], resize_input_shape=resize_input_shape)
 
             # losses
             loss_dict, dynamic_weights = get_losses(config, output_shape, local_batch_size)
@@ -169,7 +177,7 @@ def main(config):
                     if config['random_init']:
                         raise NotImplementedError('Random init not implemented for non separable dataset')
                     else:
-                        psf = get_psf(dataset_config)
+                        psf = get_psf(dataset_config, input_shape=resize_input_shape)
                     camera_inversion_layer = FTLayer(psf=psf, **config['camera_inversion_args']['non_separable'])
 
 
@@ -215,6 +223,8 @@ def main(config):
                                 global_batch_size=local_batch_size,#config['batch_size'],
                                 distributed_gpu=config['distributed_gpu'],
                                 num_gpus=len(gpus))
+            
+            
             
             assert int(config['weight_pruning']) + int(config['weight_clustering']) + int(config['QAT']) <= 1, 'At most one weight modification can be applied at a time'
 
@@ -289,7 +299,7 @@ def main(config):
             print('='*70)
             print(model.summary())
             
-            
+
 
             checkpoint_path = os.path.join(store_folder, 'checkpoints')
             if not os.path.isdir(checkpoint_path):

@@ -99,8 +99,8 @@ def u_net(input, enc_filters, last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3
     # TODO : check if input.shape[1] == input_shape[0]
     num_outputs = 3 if input.shape[1] != 1 else 1
 
-    # tanh activation for [-1, 1] output
-    x = Conv2D(filters=num_outputs, kernel_size=1, use_bias=True, padding='same', activation='tanh')(x)
+    # tanh activation for [0, 1] output
+    x = Conv2D(filters=num_outputs, kernel_size=1, use_bias=True, padding='same', activation='sigmoid')(x)
 
     if out_shape:
         # Exact resizing without trainable parameters

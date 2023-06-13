@@ -75,16 +75,16 @@ def to_channel_first(x):
     return tf.keras.layers.Permute([3, 1, 2])(x)
 
 
-def get_shape(data_config, measure, downsample=1, greyscale=False):
+def get_shape(data_config, measure, greyscale=False, resize_input_shape=None):
     pref = 'measure_' if measure else 'truth_'
-    downsample = downsample if measure else 1
-    if greyscale :
-        return (data_config[pref + 'height'] // downsample, 
-                data_config[pref + 'width'] // downsample, 1)
+
+    num_channels = 1 if greyscale else data_config[pref + 'channels']
+
+    if resize_input_shape and measure:
+        return (resize_input_shape[0], resize_input_shape[1], num_channels)  
     else:
-        return (data_config[pref + 'height'] // downsample, 
-                data_config[pref + 'width'] // downsample,
-                data_config[pref + 'channels'])
+        return (data_config[pref + 'height'], data_config[pref + 'width'], num_channels)
+
 
 
 def get_config_from_yaml(path):
