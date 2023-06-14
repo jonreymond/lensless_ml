@@ -1,7 +1,7 @@
 import os
 import tensorflow as tf
 
-import torch
+
 
 from torch_to_tf import to_tf_graph
 from keras import backend as K
@@ -119,6 +119,8 @@ def get_lpips_loss(model, shape, batch_size, reduction):
 
     if not os.path.exists(lpips_path + '.pb'):
         from lpips import LPIPS
+        import torch
+        
         print('creating lpips loss...')
         lpips_loss = LPIPS(net=model)#.cuda()
         #change to satisfy with torch order : first channels
