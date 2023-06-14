@@ -238,15 +238,15 @@ def get_loss_from_name(name_id, distributed_gpu, loss_args=None):
     
 def ssim(x, y):
     # rescale from [-1, 1] to [0, 1]
-    x = (x + 1) / 2
-    y = (y + 1) / 2
+    # x = (x + 1) / 2
+    # y = (y + 1) / 2
     return tf.image.ssim(x, y, max_val=1.0)
 
 
 def psnr(x, y):
     # rescale from [-1, 1] to [0, 1]
-    x = (x + 1) / 2
-    y = (y + 1) / 2
+    # x = (x + 1) / 2
+    # y = (y + 1) / 2
     return tf.image.psnr(x, y, max_val=1.0)
 
 

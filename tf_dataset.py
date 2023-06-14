@@ -53,7 +53,7 @@ class DataLoader(ABC):
         # zip together
         data = Dataset.zip((data_measure, data_truth))
         # shuffle
-        data = data.shuffle(buffer_size=1000, reshuffle_each_iteration=True, seed=self.seed)
+        data = data.shuffle(buffer_size=200, reshuffle_each_iteration=True, seed=self.seed)
 
         # data = data.shuffle(buffer_size=self.num_files, seed=self.seed)
         # batch

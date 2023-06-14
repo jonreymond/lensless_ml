@@ -68,9 +68,9 @@ def main(config):
     # with strategy.scope():
     for i in range(1):
         
-        # with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
-        #     sys.stdout = Tee(sys.stdout, f)
-        #     sys.stderr = Tee(sys.stderr, f)
+        with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
+            sys.stdout = Tee(sys.stdout, f)
+            sys.stderr = Tee(sys.stderr, f)
 
 
         # for j in range(1):
@@ -78,10 +78,7 @@ def main(config):
             local_batch_size = config['batch_size'] #// len(gpus)
 
 
-        # copy the config file in the store folder
-        # f = open(os.path.join(store_folder, 'config.yaml'), 'w')
-        # sys.stdout = Tee(sys.stdout, f)
-        # sys.stderr = Tee(sys.stderr, f)
+
         # for i in range(1):
         
 
