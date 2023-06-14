@@ -6,21 +6,21 @@ defaults:
   - model: default_models
   - _self_
 #will load specs of wallerlab_unet in default_models
-# model_name: unet128
+model_name: unet128
 # model_name: wallerlab_unet
-model_name: unet64
+# model_name: unet64
 
 test: False
 
 resize_input: True
-resize_input_height: 384
-resize_input_width: 384
+resize_input_height: 512
+resize_input_width: 512
 
 # GAN
-use_discriminator: False
+use_discriminator: True
 
 # camera inversion
-use_camera_inversion: False
+use_camera_inversion: True
 random_init: False
 camera_inversion_args:
   separable: None
@@ -115,7 +115,8 @@ metric:
 
 lr_reducer:
   # either None if no rl_reducer callback, or reduce_lr_on_plateau, or learning_rate_scheduler
-  type: reduce_lr_on_plateau
+  # type: reduce_lr_on_plateau
+  type: learning_rate_scheduler
 
   reduce_lr_on_plateau:
     monitor: 'val_total'
@@ -126,8 +127,10 @@ lr_reducer:
     verbose: 1
 
   learning_rate_scheduler:
-    scheduler: "TODO : define function def scheduler(epoch, lr): returning updated lr"
-    verbose: 1
+    epochs_interval: 5
+    factor: 0.5
+    min_lr: 0.00000006
+
 
 
 

@@ -315,6 +315,16 @@ def compile_model(gen_model, gen_optimizer, loss_dict, metrics, metric_weights, 
     return model
 
 
+
+def lr_scheduler(epoch, lr, epochs_interval, factor, min_lr):
+
+    if (epoch +1) % epochs_interval == 0 and epoch > 0:
+        return max(lr * factor, min_lr)
+    else:
+        return lr
+
+
+
 def get_callbacks(model, store_folder, checkpoint_path, dynamic_weights, config):
 
     model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
@@ -341,7 +351,8 @@ def get_callbacks(model, store_folder, checkpoint_path, dynamic_weights, config)
         if reducer_args['type'] == "reduce_lr_on_plateau":
             callbacks.append(ReduceLROnPlateau(**reducer_args['reduce_lr_on_plateau']))
         elif reducer_args['type'] == "learning_rate_scheduler":
-            callbacks.append(LearningRateScheduler(**reducer_args['learning_rate_scheduler']))
+            scheduler = lambda epoch, lr: lr_scheduler(epoch=epoch, lr=lr, **reducer_args['learning_rate_scheduler'])
+            callbacks.append(LearningRateScheduler(scheduler, verbose=1))
         else:
             raise ValueError(reducer_args['type'] + " type is not supported, must be either 'reduce_lr_on_plateau' or 'learning_rate_scheduler'")
         
