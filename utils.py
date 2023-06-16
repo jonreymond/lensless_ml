@@ -123,8 +123,11 @@ def get_lpips_loss(model, shape, batch_size, reduction):
         from torch_to_tf import to_tf_graph
 
         print('creating lpips loss...')
+        print('target shape :', shape)
         lpips_loss = LPIPS(net=model)#.cuda()
         #change to satisfy with torch order : first channels
+        shape = (shape[-1], *shape[:-1])
+        print('sample input shape :', shape)
         sample_input = (torch.randn(batch_size, *shape, requires_grad=False),#.cuda(),
                         torch.randn(batch_size, *shape, requires_grad=False))#.cuda())
         to_tf_graph(lpips_loss, sample_input, lpips_path)
@@ -238,15 +241,15 @@ def get_loss_from_name(name_id, distributed_gpu, loss_args=None):
     
 def ssim(x, y):
     # rescale from [-1, 1] to [0, 1]
-    # x = (x + 1) / 2
-    # y = (y + 1) / 2
+    x = (x + 1) / 2
+    y = (y + 1) / 2
     return tf.image.ssim(x, y, max_val=1.0)
 
 
 def psnr(x, y):
     # rescale from [-1, 1] to [0, 1]
-    # x = (x + 1) / 2
-    # y = (y + 1) / 2
+    x = (x + 1) / 2
+    y = (y + 1) / 2
     return tf.image.psnr(x, y, max_val=1.0)
 
 

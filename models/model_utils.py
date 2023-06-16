@@ -97,29 +97,29 @@ class ReconstructionModel2(Model):
     
 
 
-def get_model(config, input_shape, out_shape, model_name='Reconstruction model'):
-    model_config = dict(config['model'][config['model_name']])
-    input = Input(shape=input_shape, name='input', dtype='float32')
+# def get_model(config, input_shape, out_shape, model_name='Reconstruction model'):
+#     model_config = dict(config['model'][config['model_name']])
+#     input = Input(shape=input_shape, name='input', dtype='float32')
 
-    x = input
+#     x = input
 
-    if config['use_camera_inversion']:
-        x = get_camera_inversion_layer(config=config, mask=None)(x)
+#     if config['use_camera_inversion']:
+#         x = get_camera_inversion_layer(config=config, mask=None)(x)
 
-    if model_config['type'] == 'unet':
-        model_config.pop('type')
-        x = u_net(input=x, **model_config, out_shape=out_shape)
+#     if model_config['type'] == 'unet':
+#         model_config.pop('type')
+#         x = u_net(input=x, **model_config, out_shape=out_shape)
         
-    elif model_config['type'] == 'unet_plus':
-        model_config.pop('type')
-        x = experimental_models(input=x, 
-                      model_args=model_config['args'], 
-                      out_shape=out_shape, 
-                      model_name=config['model_name'])
-    else:
-        raise ValueError(f'Unknown model type: {model_config["type"]}')
+#     elif model_config['type'] == 'unet_plus':
+#         model_config.pop('type')
+#         x = experimental_models(input=x, 
+#                       model_args=model_config['args'], 
+#                       out_shape=out_shape, 
+#                       model_name=config['model_name'])
+#     else:
+#         raise ValueError(f'Unknown model type: {model_config["type"]}')
     
-    return Model(inputs=[input], outputs=[x], name=model_name)
+#     return Model(inputs=[input], outputs=[x], name=model_name)
 
 
 

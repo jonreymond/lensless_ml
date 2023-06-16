@@ -73,7 +73,7 @@ def stack_decoder(x, filters, down_tensor, kernel_size=3, bilinear=True, bn_eps=
 
 
 
-def u_net(input, enc_filters, last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3, out_shape=None):
+def u_net(input, enc_filters, last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3, out_shape=None, output_activation='tanh'):
     x = input
     ### down: encoder ###
 
@@ -100,7 +100,7 @@ def u_net(input, enc_filters, last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3
     num_outputs = 3 if input.shape[1] != 1 else 1
 
     # tanh activation for [0, 1] output
-    x = Conv2D(filters=num_outputs, kernel_size=1, use_bias=True, padding='same', activation='sigmoid')(x)
+    x = Conv2D(filters=num_outputs, kernel_size=1, use_bias=True, padding='same', activation=output_activation)(x)
 
     if out_shape:
         # Exact resizing without trainable parameters

@@ -44,19 +44,23 @@ class SeparableLayer(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer, 
     def build(self, input_shape):
         self.in_shape = input_shape
         b, h, w, c = self.in_shape
-        print(self.W1.shape)
-        print(self.W2.shape)
-        assert h == self.W1.shape[1], f"W1 width must be equal to the input height, got {self.W1.shape[1]} and {h}"
+        print('W1 shape:', self.W1.shape)
+        print('W2 shape:', self.W2.shape)
+        print('input shape:', self.in_shape)
+        assert h == self.W1.shape[0], f"W1 width must be equal to the input height, got {self.W1.shape[0]} and {h}"
         assert w == self.W2.shape[0], f"W1 height must be equal to the input width, got , got {self.W2.shape[0]} and {w}"
 
 
     def call(self, x):
-        #In NCHW format, o.w. see draft
-        # TODO : define best order
-        temp = tf.matmul(self.W1, x)
-        temp = tf.matmul(temp, self.W2)
-        return self.activation(temp)
+        #In NCHW format: tf.matmul inner-most 2 dimensions
+        x = to_channel_first(x)
+        x = tf.matmul(self.W1, x, transpose_a=True)
+        x = tf.matmul(x, self.W2)
+        x = to_channel_last(x)
+
+        return self.activation(x)
     
+
     def get_list_weights(self):
         return [self.W1, self.W2]
 

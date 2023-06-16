@@ -1,4 +1,6 @@
-import setGPU
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+# import setGPU
 # import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '1, 2'
 # from utils import *
@@ -68,9 +70,9 @@ def main(config):
     # with strategy.scope():
     for i in range(1):
         
-        with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
-            sys.stdout = Tee(sys.stdout, f)
-            sys.stderr = Tee(sys.stderr, f)
+        # with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
+        #     sys.stdout = Tee(sys.stdout, f)
+        #     sys.stderr = Tee(sys.stderr, f)
 
 
         # for j in range(1):
@@ -101,7 +103,7 @@ def main(config):
             # Data Generators
 
             resize_input_shape = None
-            if config['resize_input'] and config['dataset']['name'] != 'phlatnet':
+            if config['resize_input'] and config['dataset']['name'] not in['flatnet', 'phlatnet']:
                 raise NotImplementedError('Resize input is not implemented for this dataset')
 
             data_args = dict(batch_size=local_batch_size,#config['batch_size'], 
@@ -121,8 +123,8 @@ def main(config):
             # # train = tf.data.Dataset.from_generator(train)
             # val = get_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
 
-            train = get_tf_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
-            val = get_tf_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
+            train = get_tf_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args).get()
+            val = get_tf_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args).get()
 
             # val = strategy.experimental_distribute_dataset(val)
             # train = strategy.experimental_distribute_dataset(train)

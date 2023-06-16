@@ -3,14 +3,14 @@ name: 'flatnet'
 path: /scratch/jreymond/ICCV-2019-FlatNet-Dataset/Display-Captures
 psf_path: 
 truth_folder: 'groundtruth'
-measure_folder: 'measurements'
+measure_folder: 'measurements_cropped'
 truth_format: JPEG
 measure_format: png
 len: 10000
 
 # if use the preprocessed dataset
-use_cropped_dataset : True
-measure_cropped_folder: measurements_cropped
+# use_cropped_dataset : True
+# measure_cropped_folder: measurements_cropped
 
 mask_path : 'TODO'
 
