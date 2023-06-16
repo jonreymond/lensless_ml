@@ -51,6 +51,16 @@ class SeparableLayer(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer, 
         assert w == self.W2.shape[0], f"W1 height must be equal to the input width, got , got {self.W2.shape[0]} and {w}"
 
 
+    def get_config(self):
+        config = super().get_config()
+
+        config.update({
+            "W1": self.W1,
+            "W2": self.W2
+        })
+        return config
+    
+
     def call(self, x):
         #In NCHW format: tf.matmul inner-most 2 dimensions
         x = to_channel_first(x)
