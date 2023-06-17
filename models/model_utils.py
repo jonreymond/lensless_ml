@@ -7,6 +7,7 @@ from custom_callbacks import *
 from keras import Model
 import keras
 
+from keras.layers.core import Activation
 from keras.utils.layer_utils import count_params
 
 from keras_unet_collection import models as M_unet
@@ -124,7 +125,8 @@ class ReconstructionModel2(Model):
 
 
 
-MODELS = dict(unet_2d = M_unet.unet_2d,
+MODELS = dict(
+            unet_2d = M_unet.unet_2d,
             vnet_2d = M_unet.vnet_2d,
             unet_plus_2d = M_unet.unet_plus_2d,
             r2_unet_2d = M_unet.r2_unet_2d,
@@ -138,23 +140,40 @@ MODELS = dict(unet_2d = M_unet.unet_2d,
 
 # TODO : check if not 2 **unet_depth
 def resize_input(dim, unet_depth):
-    while dim % unet_depth != 0:
+    while dim % 2**(unet_depth+1) != 0:
         dim += 1
     return dim
 
 
-def experimental_models(input, model_args, out_shape, model_name):
+def experimental_models(model_name, input, out_shape, model_args):
     model_args = dict(model_args)
+
+    output_activation = model_args.pop('output_activation')
+    model_args['output_activation'] = None
 
     _, height, width, channels = input.shape
 
+    filter_num = None
+    if 'filter_num' in model_args:
+        unet_depth = len(model_args['filter_num'])
+        
 
-    unet_depth = len(model_args['filter_num'])
+    elif 'filter_num_down' in model_args:
+        unet_depth = len(model_args['filter_num_down'])
+
+    elif 'depth' in model_args:
+        unet_depth = model_args['depth']
+        
     new_height = resize_input(height, unet_depth)
     new_width = resize_input(width, unet_depth)
 
+    if model_name in ['transunet_2d', 'swin_unet_2d', 'unet_3plus_2d']:
+        new_height = max(resize_input(height, unet_depth), resize_input(width, unet_depth))
+        new_width = new_height
 
-    x = tf.keras.layers.Resizing(new_height, new_width)(x)
+
+
+    x = tf.keras.layers.Resizing(new_height, new_width)(input)
     
     model_args['n_labels'] = channels
     model_args['input_size'] = (new_height, new_width, channels)
@@ -164,7 +183,11 @@ def experimental_models(input, model_args, out_shape, model_name):
     gen_model.summary()
 
     x = gen_model(x)
-    x = tf.keras.layers.Resizing(height=out_shape[1], width=out_shape[2])(x)
+
+    print('output shape: ')
+    x = Activation(output_activation)(x)
+
+    x = tf.keras.layers.Resizing(height=out_shape[0], width=out_shape[1])(x)
 
     return x
 

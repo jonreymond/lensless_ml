@@ -1,6 +1,6 @@
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-# import setGPU
+# os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+import setGPU
 # import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '1, 2'
 # from utils import *
@@ -184,10 +184,18 @@ def main(config):
                 input = camera_inversion_layer(input)
                 
             model_config = dict(config['model'][config['model_name']])
-            model_config.pop('type')
+            model_type = model_config.pop('type')
             # TODO : add experimental support for other models
+            if model_type == 'unet':
+                model_output = [u_net(input=input, **model_config, out_shape=output_shape)]
+            else:
+                model_output = [experimental_models(model_name=config['model_name'], 
+                                                    input=input, 
+                                                    out_shape=output_shape,
+                                                    model_args=model_config['args'])]
+
             perceptual_model = Model(inputs=[input],
-                                     outputs=[u_net(input=input, **model_config, out_shape=output_shape)],
+                                     outputs=model_output,
                                      name='perceptual_model')
             
             gen_model = ReconstructionModel3(input_shape=input_shape, 

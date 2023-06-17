@@ -175,7 +175,7 @@ class FTLayer(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer, tfmot.c
         print('psf shape', psf_shape)
         print('in shape', in_shape)
         
-        assert np.all(psf_shape == in_shape), 'PSF shape must be greater than input shape'
+        assert np.all(psf_shape >= in_shape), 'PSF shape must be greater than input shape'
 
         target_shape = 2 * in_shape - 1 if self.pad else psf_shape
 

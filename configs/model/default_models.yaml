@@ -44,8 +44,6 @@ vnet_2d:
     # n_labels: 3
     res_num_ini: 1 
     res_num_max: 3
-    stack_num_down: 2
-    stack_num_up: 2
     activation: "ReLU" # PReLU
     output_activation: tanh
     batch_norm: true
@@ -66,7 +64,7 @@ att_unet_2d:
     attention: "add"
     output_activation: tanh
     batch_norm: true
-    pool: false # downsampling with a convolutional layer instead of maxpooling
+    pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: "bilinear"
     # backbone: 'VGG16'
     # weights: 'imagenet'
@@ -83,15 +81,15 @@ unet_plus_2d:
     activation: "ReLU"
     output_activation: tanh
     batch_norm: true
-    pool: false # downsampling with a convolutional layer instead of maxpooling
+    pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: "bilinear"
-    deep_supervision: true
+    deep_supervision: false
 
 
 unet_3plus_2d:
   type: unet_plus
   args:
-    filter_num: [64, 128, 256, 512]
+    filter_num_down: [64, 128, 256, 512]
     # for 3 colors rgb
     # n_labels: 3
     filter_num_skip: 'auto'
@@ -101,9 +99,9 @@ unet_3plus_2d:
     activation: "ReLU"
     output_activation: tanh
     batch_norm: true
-    pool: false # downsampling with a convolutional layer instead of maxpooling
+    pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: "bilinear"
-    deep_supervision: true
+    deep_supervision: false
 
 
 r2_unet_2d:
@@ -117,10 +115,10 @@ r2_unet_2d:
     activation: "ReLU"
     output_activation: tanh
     batch_norm: true
-    pool: false # downsampling with a convolutional layer instead of maxpooling
+    pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: "bilinear"
     recur_num: 2
-    deep_supervision: true
+
 
 
 resunet_a_2d:
@@ -137,30 +135,29 @@ resunet_a_2d:
     activation: "ReLU"
     output_activation: tanh
     batch_norm: true
-    pool: false # downsampling with a convolutional layer instead of maxpooling
+    pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: "bilinear"
-    res_num: 1
     # deep_supervision: true
 
 u2net_2d:
   type: unet_plus
   args:
-    filter_num: [64, 128, 256, 512]
     # for 3 colors rgb
     # n_labels: 3
     # stack_num_down: 2
     # stack_num_up: 2
-    filter_num_up: [64, 64, 128, 256] 
-    filter_mid_num_down: [32, 32, 64, 128]
-    filter_mid_num_up: [16, 32, 64, 128]
-    filter_4f_num: [512, 512]
-    filter_4f_mid_num: [256, 256]
+    filter_num_down: [64, 128, 256, 512]
+    # filter_num_up: [64, 64, 128, 256] 
+    # filter_mid_num_down: [32, 32, 64, 128]
+    # filter_mid_num_up: [16, 32, 64, 128]
+    # filter_4f_num: [512, 512]
+    # filter_4f_mid_num: [256, 256]
     activation: "ReLU"
-    output_activation: null
+    output_activation: tanh
     batch_norm: true
-    pool: false # downsampling with a convolutional layer instead of maxpooling
+    pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: "bilinear"
-    deep_supervision: true
+    deep_supervision: false
     # backbone: 'VGG16'
     # weights: 'imagenet'
 
@@ -172,15 +169,15 @@ transunet_2d:
 
     stack_num_down: 2
     stack_num_up: 2
-    embed_dim: 768
-    num_mlp: 3072
-    num_heads: 12
-    num_transformer: 12
+    embed_dim: 256
+    num_mlp: 256
+    num_heads: 4
+    num_transformer: 4
     activation: 'ReLU'
     mlp_activation: 'GELU'
-    output_activation: tanh,
+    output_activation: tanh
     batch_norm: True
-    pool: True #maxpool
+    pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: 'bilinear'
     name: 'transunet'
 
@@ -195,13 +192,20 @@ swin_unet_2d:
     patch_size: [2, 2]
     num_heads: [4, 8, 8, 8]
     window_size: [4, 2, 2, 2]
-    num_mlp: 512
+    num_mlp: 256
     output_activation: tanh
     shift_window: True
     name: 'swin_unet'
 
-
-
+# model_name: vnet_2d --> not working
+# model_name: att_unet_2d --> interesting
+# model_name: unet_plus_2d
+# model_name: unet_3plus_2d #--> is really big
+# model_name: r2_unet_2d # --> seems quite big: only in MB
+# model_name: resunet_a_2d # --> is really big
+# model_name: u2net_2d # --> is really big, but works, low lpips
+# model_name: transunet_2d # --> is really big
+# model_name: swin_unet_2d # --> is really big
 
 
 
