@@ -4,23 +4,26 @@ wallerlab_unet:
   # bn_eps: 0.0001
   num_dec_conv: 3
   enc_filters : [24, 64, 128, 256, 512]
-
+  output_activation: #tanh
 
 #flatnet
 unet32:
   type: unet
   enc_filters : [32, 64, 128, 256]
   last_conv_filter: 12
+  output_activation: #tanh
 
 unet64:
   type: unet
   enc_filters : [64, 128, 256, 512]
   last_conv_filter: 12
+  output_activation: #tanh
 
 unet128:
   type: unet
   enc_filters : [128, 256, 512, 1024]
   last_conv_filter: 12
+  output_activation: #tanh
 
 ######################################
 ###### Experimental models ###########
@@ -45,7 +48,7 @@ vnet_2d:
     res_num_ini: 1 
     res_num_max: 3
     activation: "ReLU" # PReLU
-    output_activation: tanh
+    output_activation: #tanh
     batch_norm: true
     pool: false # downsampling with a convolutional layer instead of maxpooling
     unpool: "bilinear"
@@ -62,7 +65,7 @@ att_unet_2d:
     activation: "ReLU"
     atten_activation: "ReLU"
     attention: "add"
-    output_activation: tanh
+    output_activation: #tanh
     batch_norm: true
     pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: "bilinear"
@@ -79,7 +82,7 @@ unet_plus_2d:
     stack_num_down: 2
     stack_num_up: 2
     activation: "ReLU"
-    output_activation: tanh
+    output_activation: #tanh
     batch_norm: true
     pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: "bilinear"
@@ -97,7 +100,7 @@ unet_3plus_2d:
     stack_num_down: 2
     stack_num_up: 2
     activation: "ReLU"
-    output_activation: tanh
+    output_activation: #tanh
     batch_norm: true
     pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: "bilinear"
@@ -113,7 +116,7 @@ r2_unet_2d:
     stack_num_down: 2
     stack_num_up: 2
     activation: "ReLU"
-    output_activation: tanh
+    output_activation: #tanh
     batch_norm: true
     pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: "bilinear"
@@ -133,7 +136,7 @@ resunet_a_2d:
     # stack_num_down: 2
     # stack_num_up: 2
     activation: "ReLU"
-    output_activation: tanh
+    output_activation: #tanh
     batch_norm: true
     pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: "bilinear"
@@ -153,7 +156,7 @@ u2net_2d:
     # filter_4f_num: [512, 512]
     # filter_4f_mid_num: [256, 256]
     activation: "ReLU"
-    output_activation: tanh
+    output_activation: #tanh
     batch_norm: true
     pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: "bilinear"
@@ -175,7 +178,7 @@ transunet_2d:
     num_transformer: 4
     activation: 'ReLU'
     mlp_activation: 'GELU'
-    output_activation: tanh
+    output_activation: #tanh
     batch_norm: True
     pool: true #true for maxpool, false for strided conv + batch norm + activation
     unpool: 'bilinear'
@@ -193,7 +196,7 @@ swin_unet_2d:
     num_heads: [4, 8, 8, 8]
     window_size: [4, 2, 2, 2]
     num_mlp: 256
-    output_activation: tanh
+    output_activation: #tanh
     shift_window: True
     name: 'swin_unet'
 

@@ -70,14 +70,13 @@ def main(config):
     # with strategy.scope():
     for i in range(1):
         
-        # with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
-        #     sys.stdout = Tee(sys.stdout, f)
-        #     sys.stderr = Tee(sys.stderr, f)
+        with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
+            sys.stdout = Tee(sys.stdout, f)
+            sys.stderr = Tee(sys.stderr, f)
 
 
         # for j in range(1):
             print('number of gpus: ', len(gpus))
-            local_batch_size = config['batch_size'] #// len(gpus)
 
 
 
@@ -106,7 +105,7 @@ def main(config):
             if config['resize_input'] and config['dataset']['name'] not in['flatnet', 'phlatnet']:
                 raise NotImplementedError('Resize input is not implemented for this dataset')
 
-            data_args = dict(batch_size=local_batch_size,#config['batch_size'], 
+            data_args = dict(batch_size=config['batch_size'],#config['batch_size'], 
                             greyscale=config['greyscale'],
                             use_crop=config['use_crop'], 
                             seed=config['seed'])
@@ -126,18 +125,6 @@ def main(config):
             train = get_tf_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args).get()
             val = get_tf_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args).get()
 
-            # val = strategy.experimental_distribute_dataset(val)
-            # train = strategy.experimental_distribute_dataset(train)
-
-
-            # for x, y in val.take(1):
-            #     print('x shape: ', x.shape)
-            #     print('y shape: ', y.shape)
-
-
-            # train = shared_mem_multiprocessing(train, workers=config['workers'], queue_max_size=32)
-            # val = shared_mem_multiprocessing(val, workers=config['workers'], queue_max_size=32)
-
             # train = tf.data.Dataset.from_generator(train)
             # val = tf.data.Dataset.from_generator(train)
 
@@ -146,9 +133,9 @@ def main(config):
             output_shape = get_shape(dataset_config, measure=False, greyscale=config['greyscale'], resize_input_shape=resize_input_shape)
 
             # losses
-            loss_dict, dynamic_weights = get_losses(config, output_shape, local_batch_size)
+            loss_dict, dynamic_weights = get_losses(config, output_shape, config['batch_size'])
             # metrics
-            metrics, metric_weights = get_metrics(config, output_shape, local_batch_size)
+            metrics, metric_weights = get_metrics(config, output_shape, config['batch_size'])
 
 
             opt_config = dict(config['optimizer'])
@@ -219,17 +206,17 @@ def main(config):
 
 
 
-            model = compile_model(gen_model=gen_model, 
-                                gen_optimizer=optimizer, 
-                                loss_dict=loss_dict, 
-                                metrics=metrics, 
-                                metric_weights=metric_weights, 
-                                discr_args=discr_args,
-                                in_shape=input_shape, 
-                                out_shape=output_shape,
-                                global_batch_size=local_batch_size,#config['batch_size'],
-                                distributed_gpu=config['distributed_gpu'],
-                                num_gpus=len(gpus))
+            # model = compile_model(gen_model=gen_model, 
+            #                     gen_optimizer=optimizer, 
+            #                     loss_dict=loss_dict, 
+            #                     metrics=metrics, 
+            #                     metric_weights=metric_weights, 
+            #                     discr_args=discr_args,
+            #                     in_shape=input_shape, 
+            #                     out_shape=output_shape,
+            #                     global_batch_size=config['batch_size'],#config['batch_size'],
+            #                     distributed_gpu=config['distributed_gpu'],
+            #                     num_gpus=len(gpus))
             
             
             
@@ -297,7 +284,7 @@ def main(config):
                                 discr_args=discr_args,
                                 in_shape=input_shape, 
                                 out_shape=output_shape,
-                                global_batch_size=local_batch_size,#config['batch_size'],
+                                global_batch_size=config['batch_size'],#config['batch_size'],
                                 distributed_gpu=config['distributed_gpu'],
                                 num_gpus=len(gpus))
             

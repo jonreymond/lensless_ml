@@ -64,33 +64,17 @@ class DataLoader(ABC):
         return data
 
 
-    def get_samples(self, num_samples, shuffle=True):
-        """Return num_samples pairs
+    def get_sample_dataset(self, num_samples):
+        data_measure = Dataset.from_tensor_slices(self.x_filenames[:num_samples]).cache()
+        data_measure = self._map_x(data_measure)
 
-        Args:
-            num_samples (int): number of samples desired
+        data_truth = Dataset.from_tensor_slices(self.y_filenames[:num_samples]).cache()
+        data_truth = self._map_y(data_truth)
 
-        Returns:
-            (numpy array, numpy array): pair of samples
-        """
-        indexes = np.arange(self.num_files)
-        if shuffle:
-            np.random.seed(self.seed)
-            np.random.shuffle(indexes)
-        sample_indexes = indexes[:num_samples]
+        sample_files = list(zip(self.x_filenames[:num_samples], self.y_filenames[:num_samples]))
+        return Dataset.zip((data_measure, data_truth)), sample_files
 
-        X = np.empty((num_samples, *self.in_dim), dtype=np.float32)
-        Y = np.empty((num_samples, *self.out_dim), dtype=np.float32)
-
-        for i, batch_idx in enumerate(sample_indexes):
-            print(self.x_filenames[batch_idx])
-            X[i,] = self._get_x(self.x_filenames[batch_idx])
-            Y[i,] = self._get_y(self.y_filenames[batch_idx])
-
-        if num_samples == 1:
-            X = X[0,]
-            Y = Y[0,]
-        return X, Y
+        
 
 
     @abstractmethod
@@ -163,7 +147,7 @@ def np_load(filename):
         return np.load(filename)
 
 
-class WallerlabDaloader(DataLoader):
+class WallerlabDataloader(DataLoader):
 
     def __init__(self, dataset_config, indexes, batch_size, input_shape=None, output_shape=None, greyscale=False, use_crop=True, seed=1):
         super().__init__(dataset_config, indexes, batch_size, input_shape, output_shape, greyscale, seed)
@@ -413,7 +397,7 @@ class FlatnetDataLoader(DataLoader):
 
 def get_tf_dataset(dataset_id, dataset_config, indexes, args):
     if dataset_id == 'wallerlab':
-        return WallerlabDaloader(dataset_config=dataset_config,
+        return WallerlabDataloader(dataset_config=dataset_config,
                                   indexes=indexes,
                                   **args)
     elif dataset_id == 'phlatnet':

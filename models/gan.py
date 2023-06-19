@@ -63,13 +63,17 @@ class FlatNetGAN(Model):
         self.d_loss = DiscrLoss(name='discr', label_smoothing=label_smoothing)
         
 
-    def compile(self, optimizer, d_optimizer, lpips_loss, mse_loss, adv_weight, mse_weight, perc_weight, metrics):
+    def compile(self, optimizer, d_optimizer, lpips_loss, mse_loss, adv_weight, mse_weight, perc_weight, metrics, distributed_gpu=False):
         super(FlatNetGAN, self).compile(metrics=metrics, optimizer=optimizer)
         self.d_optimizer = optimizers.get(d_optimizer) if isinstance(d_optimizer, str) else d_optimizer
         self.g_optimizer = optimizers.get(optimizer) if isinstance(optimizer, str) else optimizer
 
-        self.lpips_loss = model_utils.DistributedLoss(lpips_loss, lpips_loss.name, self.global_batch_size)
-        self.g_mse_loss = model_utils.DistributedLoss(mse_loss, mse_loss.name, self.global_batch_size)
+        if distributed_gpu:
+            lpips_loss = model_utils.DistributedLoss(lpips_loss, lpips_loss.name, self.global_batch_size)
+            mse_loss = model_utils.DistributedLoss(mse_loss, mse_loss.name, self.global_batch_size)
+
+        self.lpips_loss = lpips_loss
+        self.g_mse_loss = mse_loss
         self.adv_weight = adv_weight
         self.mse_weight = mse_weight
         self.perc_weight = perc_weight

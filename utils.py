@@ -140,8 +140,8 @@ def get_lpips_loss(model, shape, batch_size, reduction):
 
     def loss_function(x, y):
         # to NCHW
-        x = tf.transpose(x, [0, 3, 1, 2])
-        y = tf.transpose(y, [0, 3, 1, 2])
+        x = to_channel_first(x)
+        y = to_channel_first(y)
         return stored_lpips(input1=x, input2=y)['output']
     
     lpips = loss_function
@@ -184,7 +184,8 @@ class LossCombiner(Loss):
     #        print('loss name', loss.name, ', weight', weight)
     #        print('y_true shape', y_true.shape, 'y_pred shape', y_pred.shape)
     #        print(loss(y_true, y_pred).shape)
-       return tf.math.reduce_sum([weight * loss(y_true, y_pred) for weight, loss in zip(self.loss_weights, self.losses)], axis=0)
+    #        print("="*80)
+        return tf.math.reduce_sum([weight * loss(y_true, y_pred) for weight, loss in zip(self.loss_weights, self.losses)], axis=0)
 
 
 class LossNamer(Loss):
@@ -243,6 +244,7 @@ def ssim(x, y):
     # rescale from [-1, 1] to [0, 1]
     x = (x + 1) / 2
     y = (y + 1) / 2
+    x = tf.clip_by_value(x, 0, 1)
     return tf.image.ssim(x, y, max_val=1.0)
 
 
@@ -250,6 +252,7 @@ def psnr(x, y):
     # rescale from [-1, 1] to [0, 1]
     x = (x + 1) / 2
     y = (y + 1) / 2
+    x = tf.clip_by_value(x, 0, 1)
     return tf.image.psnr(x, y, max_val=1.0)
 
 

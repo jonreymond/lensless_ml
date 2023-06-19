@@ -185,7 +185,8 @@ def experimental_models(model_name, input, out_shape, model_args):
     x = gen_model(x)
 
     print('output shape: ')
-    x = Activation(output_activation)(x)
+    if output_activation:
+        x = Activation(output_activation)(x)
 
     x = tf.keras.layers.Resizing(height=out_shape[0], width=out_shape[1])(x)
 
@@ -304,12 +305,18 @@ def compile_model(gen_model, gen_optimizer, loss_dict, metrics, metric_weights, 
 
     if not distributed_gpu:
         total_loss = LossCombiner(losses, loss_weights, name='total')
+        total_metric = LossCombiner(metrics, metric_weights, name='total')
     else :
         global_batch_size = global_batch_size if discr_args else global_batch_size // num_gpus
         total_loss = DistributedLossCombiner(losses=losses, 
                                              loss_weights=loss_weights, 
                                              name='total', 
                                              global_batch_size=global_batch_size)
+        
+        total_metric = DistributedLossCombiner(losses=metrics,
+                                                loss_weights=metric_weights,
+                                                name='total',
+                                                global_batch_size=global_batch_size)
         new_metrics = []
         for m in metrics:
             new_metrics.append(DistributedLoss(m, m.name, global_batch_size=global_batch_size))
@@ -319,7 +326,7 @@ def compile_model(gen_model, gen_optimizer, loss_dict, metrics, metric_weights, 
 
         gen_model.compile(optimizer=gen_optimizer, 
                              loss=total_loss, 
-                             metrics=[*metrics, total_loss])
+                             metrics=[*metrics, total_metric])
         model = gen_model
     
     else:
@@ -332,7 +339,8 @@ def compile_model(gen_model, gen_optimizer, loss_dict, metrics, metric_weights, 
                     lpips_loss=loss_dict['lpips'][1],
                     mse_loss = loss_dict['mse'][1],
                     perc_weight=loss_dict['lpips'][0],
-                    metrics=[*metrics, total_loss])
+                    metrics=[*metrics, total_loss],
+                    distributed_gpu=distributed_gpu)
         model.build(Input(shape=in_shape).shape)
 
     return model

@@ -67,7 +67,7 @@ def get_discriminator(shape, filters, strides, kernel_size, activation='swish', 
 
     x = GlobalAveragePooling2D(keepdims=True)(x)
 
-    x = Conv2D(1, kernel_size=1, padding='same', activation='sigmoid')(x) # TODO: check padding
+    x = Conv2D(1, kernel_size=1, padding='same', activation=None)(x) # TODO: check padding
     x = Reshape(target_shape=[])(x)
 
     if sigmoid_output:

@@ -100,6 +100,7 @@ def u_net(input, enc_filters, last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3
     num_outputs = 3 if input.shape[1] != 1 else 1
 
     # tanh activation for [0, 1] output
+
     x = Conv2D(filters=num_outputs, kernel_size=1, use_bias=True, padding='same', activation=output_activation)(x)
 
     if out_shape:
