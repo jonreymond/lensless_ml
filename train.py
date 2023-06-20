@@ -241,29 +241,35 @@ def main(config):
 
             
             if config['QAT']:
-                qat_camera_inversion_layer = quantize_annotate_layer(gen_model.camera_inversion_layer, InversionLayerQuantizeConfig())
+                scope = {}
+                qat_camera_inversion_layer = None
+                if gen_model.camera_inversion_layer:
+                    qat_camera_inversion_layer = quantize_annotate_layer(gen_model.camera_inversion_layer, InversionLayerQuantizeConfig())
+                    qat_camera_inversion_layer = tf.keras.Sequential([Input(shape=input_shape, name='input', dtype='float32'),
+                                                qat_camera_inversion_layer])
+                    scope = {'InversionLayerQuantizeConfig': InversionLayerQuantizeConfig,
+                                     'FTLayer': FTLayer}
+
                 qat_perceptual_model = quantize_annotate_model(gen_model.perceptual_model)
 
                 # gen_model = ReconstructionModel3(input_shape=input_shape, 
                 #                         # output_shape=output_shape, 
                 #                             camera_inversion_layer=qat_camera_inversion_layer,
                 #                             perceptual_model=qat_perceptual_model)
-
-                qat_camera_inversion_layer = tf.keras.Sequential([Input(shape=input_shape, name='input', dtype='float32'),
-                                                qat_camera_inversion_layer])
                 
-                gen_model = qat_perceptual_model
+                perceptual_model = qat_perceptual_model
 
 
 
-                with quantize_scope({'InversionLayerQuantizeConfig': InversionLayerQuantizeConfig,
-                                     'FTLayer': FTLayer}):
+                with quantize_scope(scope):
                     scheme = dict(QAT=tfmot.quantization.keras.default_8bit.Default8BitQuantizeScheme(),
                                   CQAT=tfmot.experimental.combine.Default8BitClusterPreserveQuantizeScheme(),
                                   PQAT=tfmot.experimental.combine.Default8BitPrunePreserveQuantizeScheme(),
                                   PCQAT=tfmot.experimental.combine.Default8BitClusterPreserveQuantizeScheme(preserve_sparsity=True))
-                    qat_perceptual_model = quantize_apply(gen_model, scheme=scheme[config['QAT_scheme']])
-                    qat_camera_inversion_layer = quantize_apply(qat_camera_inversion_layer, scheme=scheme[config['QAT_scheme']])
+                    
+                    qat_perceptual_model = quantize_apply(perceptual_model, scheme=scheme[config['QAT_scheme']])
+                    if qat_camera_inversion_layer:
+                        qat_camera_inversion_layer = quantize_apply(qat_camera_inversion_layer, scheme=scheme[config['QAT_scheme']])
 
                     # print(qat_camera_inversion_layer.summary())
                     # print(qat_perceptual_model.summary())
@@ -272,7 +278,7 @@ def main(config):
                                                     camera_inversion_layer=qat_camera_inversion_layer,
                                                     perceptual_model=qat_perceptual_model)
                     print(gen_model.summary())
-                    sys.exit()
+
                     
 
 
@@ -310,7 +316,10 @@ def main(config):
             if config['load_pretrained']:
                 print('loading pretrained model ...')
                 model.load_weights(config['pretrained_path']).expect_partial()
-                print(model.optimizer.get_config())
+
+                if not config['load_pretrained_optimizer']:
+                    model.optimizer = optimizer
+
 
 
             model.fit(train,
