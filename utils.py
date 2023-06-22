@@ -164,6 +164,7 @@ class ChangeLossWeights(tf.keras.callbacks.Callback):
             else:
                 K.set_value(weight, weight + additive_factor)
 
+
         
 
 # TODO : transform to support dict
@@ -186,6 +187,11 @@ class LossCombiner(Loss):
     #        print(loss(y_true, y_pred).shape)
     #        print("="*80)
         return tf.math.reduce_sum([weight * loss(y_true, y_pred) for weight, loss in zip(self.loss_weights, self.losses)], axis=0)
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({'losses': self.losses, 'loss_weights': self.loss_weights})
+        return config
 
 
 class LossNamer(Loss):
@@ -195,6 +201,11 @@ class LossNamer(Loss):
 
     def call(self, y_true, y_pred):
         return self.loss(y_true, y_pred)
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({'loss': self.loss})
+        return config
 
 
 # class MSEChannelFirst(Loss):

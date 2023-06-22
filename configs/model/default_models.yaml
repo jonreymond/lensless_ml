@@ -10,7 +10,11 @@ wallerlab_unet:
 unet32:
   type: unet
   enc_filters : [32, 64, 128, 256]
-  last_conv_filter: 12
+  maxpool: false
+  intermediate_nodes: true # flatnet + phatnet
+  first_kernel_size: 7 # phlatnet
+  # last_conv_filter: 12
+  depth_space: true
   output_activation: #tanh
 
 unet64:
@@ -22,7 +26,7 @@ unet64:
 unet128:
   type: unet
   enc_filters : [128, 256, 512, 1024]
-  last_conv_filter: 12
+  # last_conv_filter: 12
   output_activation: #tanh
 
 ######################################

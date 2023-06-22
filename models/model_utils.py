@@ -34,6 +34,15 @@ class DistributedLossCombiner(Loss):
         # if model_losses:
         #     loss += tf.nn.scale_regularization_loss(tf.add_n(model_losses))
         return loss
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'losses': self.losses,
+            'loss_weights': self.loss_weights,
+            'global_batch_size': self.global_batch_size
+        })
+        return config
 
 
 class DistributedLoss(Loss):
@@ -49,6 +58,14 @@ class DistributedLoss(Loss):
         # if model_losses:
         #     loss += tf.nn.scale_regularization_loss(tf.add_n(model_losses))
         return loss
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'loss': self.loss,
+            'global_batch_size': self.global_batch_size
+        })
+        return config
     
 
 
@@ -503,3 +520,5 @@ class ReconstructionModel3(keras.Sequential):
             print(f"Trainable params: {trainable_count:,}")
             print(f"Non-trainable params: {non_trainable_count:,}")
             print("_" * line_length)
+
+    

@@ -281,7 +281,6 @@ def main(config):
 
                     
 
-
             model = compile_model(gen_model=gen_model, 
                                 gen_optimizer=optimizer, 
                                 loss_dict=loss_dict, 
@@ -298,18 +297,28 @@ def main(config):
             print('='*70)
             print('='*70)
             print(model.summary())
+            model.build()
+
+            
 
             if config['load_pretrained']:
                 print('loading pretrained model ...')
-                model.load_weights(config['pretrained_path']).expect_partial()
-                # model = tf.keras.models.load_model(config['pretrained_path'])
-                
+                model.load_weights(config['pretrained_path_pb']).expect_partial()
 
-                if not config['load_pretrained_optimizer']:
-                    model.optimizer = optimizer
-                if not config['load_pretrained_lr']:
-                    model.optimizer.lr = config['optimizer']['learning_rate']
-                    print(model.optimizer.variables)
+                test_model = tf.keras.models.load_model(config['pretrained_path_pb'], safe_mode=False,
+                                                compile=False)
+                
+                symbolic_weights = getattr(test_model.optimizer, 'variables')
+                weight_values = K.batch_get_value(symbolic_weights)
+
+                optimizer.build(model.trainable_variables)
+                optimizer.set_weights(weight_values)
+                model.optimizer = optimizer
+                
+                print(model.optimizer.variables)
+                
+                print(model.summary())
+
 
 
 
@@ -326,27 +335,6 @@ def main(config):
             
 
             
-
-            print('getting min and max value of val dataset')
-
-            # min_x= 10
-            # max_x = -100
-            # min_y = 10
-            # max_y = -100
-            # for x, y in val.take(1000):
-            #     min_x = min(min_x, tf.reduce_min(x))
-            #     max_x = max(max_x, tf.reduce_max(x))
-            #     min_y = min(min_y, tf.reduce_min(y))
-            #     max_y = max(max_y, tf.reduce_max(y))
-
-            # print('min_x:', min_x)
-            # print('max_x:', max_x)
-            # print('min_y:', min_y)
-            # print('max_y:', max_y)
-            # sys.exit()
-
-            # model.evaluate(val, verbose=1)
-            # sys.exit()
 
             model.fit(train,
                     epochs=config['epochs'],
@@ -386,6 +374,9 @@ def main(config):
 
                 name_gen += '.pb'
 
+                tf.keras.models.save_model(model, os.path.join(store_path, "overal_model.pb"), include_optimizer=True)
+
+
                 tf.keras.models.save_model(gen_model, os.path.join(store_path, name_gen), include_optimizer=True)
 
                 if gen_model.camera_inversion_layer:
@@ -408,6 +399,7 @@ def main(config):
 
                 name =  config['model_name'] + '.pb'
                 tf.saved_model.save(model, os.path.join(store_path, name))
+
 
 
 

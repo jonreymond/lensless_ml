@@ -11,7 +11,7 @@ from utils import *
 
 
 
-def conv_block(x, filters, kernel_size, strides=1, bn_eps=1e-3, l1_factor=0, l2_factor=0):
+def conv_block(x, filters, kernel_size, strides=1, bn_eps=1e-3, l1_factor=0, l2_factor=0, padding='same'):
     '''Convolution block : convolution --> batchnormalization --> relu
     Args:
         x (input): input
@@ -27,7 +27,7 @@ def conv_block(x, filters, kernel_size, strides=1, bn_eps=1e-3, l1_factor=0, l2_
     x = Conv2D(filters,
                 kernel_size=kernel_size,
                 strides=strides,
-                padding='same', # TODO: check
+                padding=padding,
                 kernel_initializer='glorot_uniform'
                 ,kernel_regularizer=regularizers.L1L2(l1=l1_factor, l2=l2_factor)
                 )(x)
@@ -38,12 +38,30 @@ def conv_block(x, filters, kernel_size, strides=1, bn_eps=1e-3, l1_factor=0, l2_
     return x
 
 
-def stack_encoder(x, filters, kernel_size=(3, 3), bn_eps=1e-3):
-    x = conv_block(x, filters, kernel_size, bn_eps=bn_eps)
-    x = conv_block(x, filters, kernel_size, bn_eps=bn_eps)
+def stack_encoder(input, filters, kernel_sizes=[3, 3], bn_eps=1e-3, maxpool=True, intermediate_nodes=False):
+    if not maxpool:
+        padding = ['valid', 'same']
+        strides = [2, 1]
+    else:
+        padding = ['same', 'same']
+        strides = [1, 1]
+    x = conv_block(input, filters, kernel_sizes[0], bn_eps=bn_eps, strides=strides[0], padding=padding[0])
+    x = conv_block(x, filters, kernel_sizes[1], bn_eps=bn_eps, strides=strides[1], padding=padding[1])
     down_tensor = x
-    x_small = MaxPooling2D(pool_size=2, strides=2)(x)
-    return x_small, down_tensor
+    if maxpool:
+        x_small = MaxPooling2D(pool_size=2, strides=2)(x)
+        if intermediate_nodes:
+            down_tensor = conv_block(x_small, filters, kernel_size=1, bn_eps=bn_eps, strides=1, padding='same')
+        return x_small, down_tensor
+    else:
+        if intermediate_nodes:
+            input = conv_block(input, filters, kernel_size=1, bn_eps=bn_eps, strides=1, padding='same')
+        return down_tensor, input
+
+
+
+    print('x_small.shape', x_small.shape, 'down_tensor.shape', down_tensor.shape)
+    
 
 
 def stack_decoder(x, filters, down_tensor, kernel_size=3, bilinear=True, bn_eps=1e-3, num_conv=2):
@@ -73,13 +91,34 @@ def stack_decoder(x, filters, down_tensor, kernel_size=3, bilinear=True, bn_eps=
 
 
 
-def u_net(input, enc_filters, last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3, out_shape=None, output_activation='tanh'):
+# enc_filters : [32, 64, 128, 256]
+#   strides: [[2, 1], [1, 2], [1, 2], [1, 2]]
+#   maxpool: false
+#   intermediate_nodes: false
+
+def u_net(input, enc_filters, maxpool=True, intermediate_nodes=False, first_kernel_size=3,
+          last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3, out_shape=None, output_activation='tanh',
+          depth_space=False):
+    
     x = input
+    if depth_space:
+        x = tf.nn.space_to_depth(x, 2)
+
+
     ### down: encoder ###
 
     down_tensors = []
-    for enc_filter in enc_filters:
-        x, down_tensor = stack_encoder(x, enc_filter, kernel_size=3, bn_eps=bn_eps)
+
+    if not maxpool:
+        x = conv_block(x, enc_filters[0], kernel_size=3, bn_eps=bn_eps, strides=1)
+        x = conv_block(x, enc_filters[0], kernel_size=3, bn_eps=bn_eps, strides=1)
+
+    kernel_sizes = [[3,3]] * len(enc_filters)
+    kernel_sizes[0] = [first_kernel_size,3]
+
+    
+    for i in range(len(enc_filters)):
+        x, down_tensor = stack_encoder(x, enc_filters[i], kernel_sizes=kernel_sizes[i], bn_eps=bn_eps, maxpool=maxpool, intermediate_nodes=intermediate_nodes)
         down_tensors.append(down_tensor)
     
     ### Center ###
@@ -95,13 +134,17 @@ def u_net(input, enc_filters, last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3
 
     if last_conv_filter:
         x = conv_block(x, last_conv_filter, kernel_size=3)
+    
+    
+
     ### "classifier" ###
-    # TODO : check if input.shape[1] == input_shape[0]
     num_outputs = 3 if input.shape[1] != 1 else 1
-
-    # tanh activation for [0, 1] output
-
+    if depth_space:
+        num_outputs *= 2**2
     x = Conv2D(filters=num_outputs, kernel_size=1, use_bias=True, padding='same', activation=output_activation)(x)
+
+    if depth_space:
+        x = tf.nn.depth_to_space(x, 2)
 
     if out_shape:
         # Exact resizing without trainable parameters
@@ -112,7 +155,7 @@ def u_net(input, enc_filters, last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3
         # x = tf.keras.layers.Resizing(height=out_shape[1], width=out_shape[2], interpolation='bilinear')(x)
         # x = to_channel_first(x)
 
-        # for QAT, need to 
+    
 
     return x
 

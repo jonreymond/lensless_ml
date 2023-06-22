@@ -1,23 +1,24 @@
 defaults:
   # - dataset: flatnet_dataset
-  - dataset: phlatnet_dataset
-  # - dataset : wallerlab_dataset
+  # - dataset: phlatnet_dataset
+  - dataset : wallerlab_dataset
   
   - model: default_models
   - _self_
 #will load specs of wallerlab_unet in default_models
-model_name: unet128
+# model_name: unet128
 # model_name: wallerlab_unet
+model_name: unet64
 # model_name: unet64
 
 test: False
 
-resize_input: True
+resize_input: False
 resize_input_height: 512
 resize_input_width: 512
 
 # GAN
-use_discriminator: True
+use_discriminator: False
 
 # camera inversion
 use_camera_inversion: True
@@ -49,13 +50,13 @@ QAT_scheme: "QAT"
 
 
 
-workers: 16
+workers: 32
 # queue_max_size: 32
 
-batch_size: 4
+batch_size: 16
 #validation set percentage
 validation_split: 0.2
-epochs: 75
+epochs: 5
 # to be used to test the train pipeline : will only train on a subset of the dataset
 
 
@@ -71,12 +72,19 @@ use_tensorboard: True
 tensorboard_profile_batch: 20
 
 
-load_pretrained : False
+load_pretrained : True
+load_pretrained_optimizer: False
+load_pretrained_lr : False
 # flatnet
 # pretrained_model_path : /root/jreymond/lensless_ml/outputs/2023-05-10/07-02-20/tensorflow/checkpoints/
 # phlatnet
 # pretrained_path : /root/jreymond/lensless_ml/outputs/2023-05-15/12-14-26/tensorflow/checkpoints/
-pretrained_path : /root/jreymond/lensless_ml/outputs/2023-06-05/15-58-34/tensorflow/models/wallerlab_unet.pb
+# pretrained_path : /home/jreymond/lensless_ml/outputs/2023-06-14/16-23-11/tensorflow/checkpoints/
+#best wallerlab set
+# pretrained_path : /home/jreymond/lensless_ml/outputs/2023-06-21/07-10-23/tensorflow/models/unet64.pb
+pretrained_path_pb : /home/jreymond/lensless_ml/outputs/2023-06-21/07-10-23/tensorflow/models/overal_model.pb
+
+
 
 use_crop: True
 
@@ -97,7 +105,7 @@ loss:
   lpips:
     # either vgg or alex
     model: vgg
-    weight: 1.2
+    weight: 1.8
     # either "" or number: additive factor to update the weight of the loss
     additive_factor: "" #0.05
   
@@ -107,7 +115,7 @@ metric:
     weight: 1
   lpips:
     model: vgg
-    weight: 1.2
+    weight: 1.8
   psnr:
     weight: 0
   ssim:
@@ -115,13 +123,13 @@ metric:
 
 lr_reducer:
   # either None if no rl_reducer callback, or reduce_lr_on_plateau, or learning_rate_scheduler
-  # type: reduce_lr_on_plateau
-  type: learning_rate_scheduler
+  type: reduce_lr_on_plateau
+  # type: learning_rate_scheduler
 
   reduce_lr_on_plateau:
     monitor: 'val_total'
-    factor: 0.5
-    patience: 4
+    factor: 0.75
+    patience: 3
     # 6e-8
     min_lr: 0.00000006
     verbose: 1
