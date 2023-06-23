@@ -305,19 +305,19 @@ def main(config):
                 print('loading pretrained model ...')
                 model.load_weights(config['pretrained_path_pb']).expect_partial()
 
-                test_model = tf.keras.models.load_model(config['pretrained_path_pb'], safe_mode=False,
-                                                compile=False)
-                
-                symbolic_weights = getattr(test_model.optimizer, 'variables')
-                weight_values = K.batch_get_value(symbolic_weights)
+                if config['load_pretrained_optimizer']:
+                    test_model = tf.keras.models.load_model(config['pretrained_path_pb'], safe_mode=False,
+                                                    compile=False)
+                    
+                    symbolic_weights = getattr(test_model.optimizer, 'variables')
+                    weight_values = K.batch_get_value(symbolic_weights)
 
-                optimizer.build(model.trainable_variables)
-                optimizer.set_weights(weight_values)
-                model.optimizer = optimizer
+                    optimizer.build(model.trainable_variables)
+                    optimizer.set_weights(weight_values)
+                    model.optimizer = optimizer
                 
-                print(model.optimizer.variables)
+                    # print(model.optimizer.variables)
                 
-                print(model.summary())
 
 
 
