@@ -14,7 +14,7 @@ import sys
 ###############################################################################
 
 class DiscrLoss(Loss):
-    def __init__(self, name='discr_loss', label_smoothing=0, **kwargs):
+    def __init__(self, name='discr_loss', label_smoothing=None, **kwargs):
         super().__init__(name=name, **kwargs)
         self.label_smoothing = label_smoothing
         self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True, **kwargs)
@@ -23,8 +23,18 @@ class DiscrLoss(Loss):
     def call(self, y_true, y_pred):
         # put into range [0, 1] --> now both in [-1, 1]
         # y_true = (y_true + 1) /2
-        real_loss = self.cross_entropy(tf.ones_like(y_true) - self.label_smoothing, y_true)
-        fake_loss = self.cross_entropy(tf.zeros_like(y_pred) + self.label_smoothing, y_pred)
+        zeros = tf.zeros_like(y_pred)
+        ones = tf.ones_like(y_pred)
+        if self.label_smoothing:
+            zeros = tf.random.uniform(shape=y_pred.shape, 
+                                       minval=self.label_smoothing['fake_range'][0], 
+                                       maxval=self.label_smoothing['fake_range'][1])
+            ones = tf.random.uniform(shape=y_pred.shape, 
+                                       minval=self.label_smoothing['true_range'][0], 
+                                       maxval=self.label_smoothing['true_range'][1])
+            
+        real_loss = self.cross_entropy(ones, y_true)
+        fake_loss = self.cross_entropy(zeros, y_pred)
         total_loss = real_loss + fake_loss
         return total_loss
     
@@ -44,7 +54,7 @@ class AdversarialLoss(Loss):
 
 
 class FlatNetGAN(Model):
-    def __init__(self, discriminator, generator, global_batch_size=None, label_smoothing=0, **kwargs):
+    def __init__(self, discriminator, generator, global_batch_size=None, label_smoothing=None, **kwargs):
         super(FlatNetGAN, self).__init__(**kwargs)
         self.discriminator = discriminator
         self.generator = generator
