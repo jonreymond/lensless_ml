@@ -275,12 +275,13 @@ def get_psf(data_config, input_shape=None):
         return psf
     
     elif data_config['name'] == 'phlatnet':
-        psf = np.load(psf_config['path'])
+        psf = np.load(psf_config['path']).astype('float32')
 
         # psf = psf[:: data_config['downsample'], :: data_config['downsample'], :]
         if input_shape is not None:
             psf = cv2.resize(psf, (input_shape[1], input_shape[0]))
             print('psf shape', psf.shape, 'psf type', psf.dtype)
+
 
         return psf
     

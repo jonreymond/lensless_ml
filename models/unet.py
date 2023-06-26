@@ -90,6 +90,10 @@ def stack_decoder(x, filters, down_tensor, kernel_size=3, bilinear=True, bn_eps=
     return x
 
 
+def resize_input(input, factor):
+    while input % factor != 0:
+        input += 1
+    return input
 
 # enc_filters : [32, 64, 128, 256]
 #   strides: [[2, 1], [1, 2], [1, 2], [1, 2]]
@@ -102,7 +106,14 @@ def u_net(input, enc_filters, maxpool=True, intermediate_nodes=False, first_kern
     
     x = input
     if depth_space:
-        x = tf.nn.space_to_depth(x, 2)
+        factor = 2
+        # height, width = input.shape[1:3]
+        # new_height = resize_input(height, factor=factor)
+        # new_width = resize_input(width, factor=factor)
+        # print('new_height', new_height, 'new_width', new_width)
+
+        # x = tf.keras.layers.Resizing(new_height, new_width)(input)
+        x = tf.nn.space_to_depth(x, factor)
 
 
     ### down: encoder ###
@@ -145,6 +156,7 @@ def u_net(input, enc_filters, maxpool=True, intermediate_nodes=False, first_kern
 
     if depth_space:
         x = tf.nn.depth_to_space(x, 2)
+        # x = tf.keras.layers.Resizing(height, width)(input)
 
     if out_shape:
         # Exact resizing without trainable parameters

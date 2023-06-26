@@ -279,7 +279,8 @@ def main(config):
                                                     perceptual_model=qat_perceptual_model)
                     print(gen_model.summary())
 
-                    
+
+
 
             model = compile_model(gen_model=gen_model, 
                                 gen_optimizer=optimizer, 
@@ -297,7 +298,7 @@ def main(config):
             print('='*70)
             print('='*70)
             print(model.summary())
-            model.build()
+            
 
             
 

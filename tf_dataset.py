@@ -6,6 +6,7 @@ import tensorflow as tf
 import glob
 
 MAX_UINT8_VAL = 2**8
+MAX_UINT12_VAL = 2**12
 MAX_UINT16_VAL = 2**16
 
 class DataLoader(ABC):
@@ -255,7 +256,7 @@ class PhlatnetDataLoader(DataLoader):
             return img
 
     
-        data_measure = data_measure.map(lambda item: tf.cast(tf.numpy_function(load_resize, [item], tf.uint16)/ MAX_UINT8_VAL, tf.float32), 
+        data_measure = data_measure.map(lambda item: tf.cast(tf.numpy_function(load_resize, [item], tf.uint16)/ MAX_UINT12_VAL, tf.float32), 
                                             num_parallel_calls=tf.data.AUTOTUNE)
                    
 

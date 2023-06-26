@@ -26,10 +26,10 @@ class DiscrLoss(Loss):
         zeros = tf.zeros_like(y_pred)
         ones = tf.ones_like(y_pred)
         if self.label_smoothing:
-            zeros = tf.random.uniform(shape=y_pred.shape, 
+            zeros = tf.random.uniform(shape=tf.shape(y_pred), 
                                        minval=self.label_smoothing['fake_range'][0], 
                                        maxval=self.label_smoothing['fake_range'][1])
-            ones = tf.random.uniform(shape=y_pred.shape, 
+            ones = tf.random.uniform(shape=tf.shape(y_pred), 
                                        minval=self.label_smoothing['true_range'][0], 
                                        maxval=self.label_smoothing['true_range'][1])
             
