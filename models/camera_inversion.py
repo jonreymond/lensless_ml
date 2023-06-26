@@ -297,6 +297,10 @@ def get_separable_init_matrices(config):
         phi_l = d['P1gb']
         phi_r = d['Q1gb']
         return phi_l, phi_r
+    elif config['name'] == 'wallerlab':
+        phi_l = np.load(config['random_toeplitz_path']['phi_l']).astype('float32')
+        phi_r = np.load(config['random_toeplitz_path']['phi_r']).astype('float32')
+        return phi_l, phi_r
     else:
         raise NotImplementedError('Only flatnet dataset implemented, implement the loading of the left-right matrices for this dataset')
 

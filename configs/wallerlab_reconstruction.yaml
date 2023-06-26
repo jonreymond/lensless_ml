@@ -6,19 +6,20 @@ defaults:
   - model: default_models
   - _self_
 #will load specs of wallerlab_unet in default_models
-# model_name: unet128
-model_name: wallerlab_unet
+# model_name: unet128_sep
+model_name: unet128_gen
+# model_name: wallerlab_unet
 # model_name: unet64
 # model_name: unet64
 
 test: False
 
-resize_input: False
-resize_input_height: 512
-resize_input_width: 512
+resize_input: True
+resize_input_height: 480
+resize_input_width: 640
 
 # GAN
-use_discriminator: True
+use_discriminator: False
 
 # camera inversion
 use_camera_inversion: True
@@ -28,12 +29,13 @@ camera_inversion_args:
 
   non_separable: 
     activation: linear
-    gamma: 20000
+    # gamma: 20000
+    gamma: 50000 # phlatnet
     pad: False
 
 
 # don't change
-distributed_gpu: True
+distributed_gpu: False
 
 weight_pruning: False
 weight_clustering: False
@@ -53,7 +55,7 @@ QAT_scheme: "QAT"
 workers: 32
 # queue_max_size: 32
 
-batch_size: 2
+batch_size: 4
 #validation set percentage
 validation_split: 0.2
 epochs: 75
@@ -94,7 +96,7 @@ verbose: 2
 optimizer:
   # name of optimizer technique desired
   identifier: "adam"
-  learning_rate: 0.0001
+  learning_rate: 0.0005
 
 
 loss:
@@ -128,7 +130,7 @@ lr_reducer:
 
   reduce_lr_on_plateau:
     monitor: 'val_total'
-    factor: 0.75
+    factor: 0.70
     patience: 3
     # 6e-8
     min_lr: 0.00000006
@@ -144,7 +146,7 @@ lr_reducer:
 
 discriminator:
   label_smoothing:
-    fake_range: [0.0, 0.3]
+    fake_range: [0.0, 0.01]
     true_range: [0.7, 0.75]
   optimizer:
     args:
@@ -172,11 +174,12 @@ discriminator:
   weight: 0.6
   model:
     filters:     [64, 128, 128, 256]
-    strides:     [2,  2,   2,   1]
+    # strides:     [2,  2,   2,   1] #flatnet
+    strides:     [1,  2,   1,   1] #phlatnet
     kernel_size: [3,  3,   3,   3]
     activation: "swish"
     # else will use batchnorm
-    use_groupnorm: False
+    use_groupnorm: True
     #num for groupnorm
     num_groups: 4
     sigmoid_output: False

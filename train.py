@@ -155,7 +155,7 @@ def main(config):
                     if config['random_init']:
                         raise NotImplementedError('Random init not implemented for separable dataset')
                     else:
-                        assert dataset_config['name'] == 'flatnet', 'Only flatnet dataset is supported for separable dataset'
+                        # assert dataset_config['name'] == 'flatnet', 'Only flatnet dataset is supported for separable dataset'
                         phi_l, phi_r = get_separable_init_matrices(dataset_config)
                     camera_inversion_layer = SeparableLayer(phi_l, phi_r)
                 # Non separable dataset
@@ -298,6 +298,8 @@ def main(config):
             print('='*70)
             print('='*70)
             print(model.summary())
+
+            # sys.exit()
             
 
             
