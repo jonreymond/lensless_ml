@@ -1,8 +1,13 @@
+# #############################################################################
+# utils.py
+# =================
+# Author :
+# Jonathan REYMOND [jonathan.reymond7@gmail.com]
+# #############################################################################
+
+
 import os
 import tensorflow as tf
-
-
-
 
 from keras import backend as K
 import sys
@@ -10,13 +15,11 @@ import tensorflow as tf
 from keras.losses import Loss
 import yaml
 import numpy as np
-import cv2
+
 from keras.losses import MeanSquaredError
 
-from multiprocessing import Process, Queue, shared_memory, managers
 import sys
 import io
-
 
 
 
@@ -49,8 +52,6 @@ def tf_rgb2gray(rgb, weights=tf.constant([0.299, 0.587, 0.114], dtype=tf.float32
 
 
 
-
-# TODO : how to use @tf.function with tf and keras same time
 def to_channel_last(x):
     """from NCHW to NHWC format
 
@@ -180,12 +181,6 @@ class LossCombiner(Loss):
         self.losses = losses
 
     def call(self, y_true, y_pred):
-    #    for weight, loss in zip(self.loss_weights, self.losses):
-    #        print("="*80)
-    #        print('loss name', loss.name, ', weight', weight)
-    #        print('y_true shape', y_true.shape, 'y_pred shape', y_pred.shape)
-    #        print(loss(y_true, y_pred).shape)
-    #        print("="*80)
         return tf.math.reduce_sum([weight * loss(y_true, y_pred) for weight, loss in zip(self.loss_weights, self.losses)], axis=0)
     
     def get_config(self):
@@ -250,7 +245,8 @@ def get_loss_from_name(name_id, distributed_gpu, loss_args=None):
         return LossNamer(psnr, 'psnr', reduction=reduction)
     else:
         raise NotImplementedError('loss not implemented')
-    
+
+
 def ssim(x, y):
     # rescale from [-1, 1] to [0, 1]
     x = (x + 1) / 2
@@ -316,90 +312,45 @@ class Tee(io.TextIOBase):
             writer.write(data)
 
 
+# from https://stackoverflow.com/questions/43137288/how-to-determine-needed-memory-of-keras-model
+def get_model_memory_usage(batch_size, model):
+    import numpy as np
+    try:
+        from keras import backend as K
+    except:
+        from tensorflow.keras import backend as K
+
+    shapes_mem_count = 0
+    internal_model_mem_count = 0
+    for l in model.layers:
+        layer_type = l.__class__.__name__
+        if layer_type == 'Model':
+            internal_model_mem_count += get_model_memory_usage(batch_size, l)
+        single_layer_mem = 1
+        out_shape = l.output_shape
+        if type(out_shape) is list:
+            out_shape = out_shape[0]
+        for s in out_shape:
+            if s is None:
+                continue
+            single_layer_mem *= s
+        shapes_mem_count += single_layer_mem
+
+    trainable_count = np.sum([K.count_params(p) for p in model.trainable_weights])
+    non_trainable_count = np.sum([K.count_params(p) for p in model.non_trainable_weights])
+
+    number_size = 4.0
+    if K.floatx() == 'float16':
+        number_size = 2.0
+    if K.floatx() == 'float64':
+        number_size = 8.0
+
+    total_memory = number_size * (batch_size * shapes_mem_count + trainable_count + non_trainable_count)
+    gbytes = np.round(total_memory / (1024.0 ** 3), 3) + internal_model_mem_count
+    return gbytes
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-# class ShmArray(np.ndarray):
-
-#     def __new__(cls, shape, dtype=float, buffer=None, offset=0,
-#                 strides=None, order=None, shm=None):
-#         obj = super(ShmArray, cls).__new__(cls, shape, dtype,
-#                                            buffer, offset, strides,
-#                                            order)
-#         obj.shm = shm
-#         return obj
-
-#     def __array_finalize__(self, obj):
-#         if obj is None: return
-#         self.shm = getattr(obj, 'shm', None)
-
-
-
-
-
-
-
-
-
-# def shared_mem_multiprocessing(sequence, workers=8, queue_max_size=32):
-
-#     class ErasingSharedMemory(shared_memory.SharedMemory):
-
-#         def __del__(self):
-#             super(ErasingSharedMemory, self).__del__()
-#             self.unlink()
-
-#     queue = Queue(maxsize=queue_max_size)
-#     manager = managers.SharedMemoryManager()
-#     manager.start()
-
-#     def worker(sequence, idxs):
-#         for i in idxs:
-#             x, y = sequence[i]
-
-#             shm = manager.SharedMemory(size=x.nbytes + y.nbytes)
-#             a = np.ndarray(x.shape, dtype=x.dtype, buffer=shm.buf, offset=0)
-#             b = np.ndarray(y.shape, dtype=y.dtype, buffer=shm.buf, offset=x.nbytes)
-
-#             a[:] = x[:]
-#             b[:] = y[:]
-#             queue.put((a.shape, a.dtype, b.shape, b.dtype, shm.name))
-#             shm.close()
-#             del shm
-
-#     idxs = np.array_split(np.arange(len(sequence)), workers)
-#     args = zip([sequence] * workers, idxs)
-#     processes = [Process(target=worker, args=(s, i)) for s, i in args]
-#     _ = [p.start() for p in processes]
-
-#     try:
-#         for i in range(len(sequence)):
-#             x_shape, x_dtype, y_shape, y_dtype, shm_name = queue.get(block=True)
-#             existing_shm = ErasingSharedMemory(name=shm_name)
-#             x = ShmArray(x_shape, dtype=x_dtype, buffer=existing_shm.buf, offset=0, shm=existing_shm)
-#             y = ShmArray(y_shape, dtype=y_dtype, buffer=existing_shm.buf, offset=x.nbytes, shm=existing_shm)
-#             yield x, y
-#             # Memory will be automatically deleted when gc is triggered
-#     finally:
-#         print("Closing all the processed")
-#         _ = [p.terminate() for p in processes]
-#         print("Joining all the processed")
-#         _ = [p.join() for p in processes]
-#         queue.close()
-#         manager.shutdown()
-#         manager.join()
 
 
 

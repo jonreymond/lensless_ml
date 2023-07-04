@@ -1,9 +1,14 @@
+# #############################################################################
+# train.py
+# =================
+# Author :
+# Jonathan REYMOND [jonathan.reymond7@gmail.com]
+# #############################################################################
+
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import setGPU
-# import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '1, 2'
-# from utils import *
+
 import hydra
 
 # from dataset import get_dataset
@@ -14,19 +19,11 @@ import sys
 from sklearn.model_selection import train_test_split
 from models.model_utils import *
 
-import json
 
 
 import tensorflow as tf
 tf.keras.backend.set_image_data_format('channels_last')
 from keras import backend as K
-
-
-from keras.losses import MeanSquaredError
-
-
-from functools import partial
-from datetime import datetime
 
 from tf_dataset import *
 
@@ -40,13 +37,8 @@ from tensorflow_model_optimization.quantization.keras import quantize_scope, qua
 
 
 
-
-
-
-@hydra.main(version_base=None, config_path="configs", config_name="wallerlab_reconstruction")
+@hydra.main(version_base=None, config_path="configs", config_name="train_reconstruction")
 def main(config):
-    # tf.config.run_functions_eagerly(False)
-
 
     print('='*80)
     print('='*80)
@@ -55,39 +47,22 @@ def main(config):
     print('Store folder: ', store_folder)
     print('-'*80)
 
-    # if config['debug_mode']:
-    #     tf.debugging.experimental.enable_dump_debug_info(
-    #     os.path.join(store_folder, 'tensorboard_logs'), tensor_debug_mode="FULL_HEALTH")
-
-
-    # tf.debugging.set_log_device_placement(True)
 
     gpus = tf.config.list_logical_devices('GPU')
-    # communication_options = tf.distribute.experimental.CommunicationOptions(implementation=tf.distribute.experimental.CommunicationImplementation.RING)
 
-    # strategy = tf.distribute.MultiWorkerMirroredStrategy(communication_options=communication_options)
-    # # #strategy = tf.distribute.MirroredStrategy(gpus)#, cross_device_ops=tf.distribute.ReductionToOneDevice())#tf.distribute.HierarchicalCopyAllReduce())
-    # with strategy.scope():
     for i in range(1):
-        
+        # To record terminal output:
+
         # with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
         #     sys.stdout = Tee(sys.stdout, f)
         #     sys.stderr = Tee(sys.stderr, f)
 
-
-        # for j in range(1):
             print('number of gpus: ', len(gpus))
 
 
-
-        # for i in range(1):
-        
-
-            # print("Num GPUs Available: ", tf.config.list_physical_devices('GPU'))
-
-            # gpus = tf.config.list_physical_devices('GPU')
-            # tf.config.set_visible_devices(gpus[0], 'GPU')
-
+            ################################################################################################################
+            ###################################### Dataset generation ######################################################
+            ################################################################################################################
 
             dataset_config = config['dataset']
             indexes = np.arange(dataset_config['len'])
@@ -99,13 +74,11 @@ def main(config):
                                                         shuffle=True,
                                                         random_state=config['seed'])
             
-            # Data Generators
-
             resize_input_shape = None
             if config['resize_input'] and config['dataset']['name'] not in['flatnet', 'phlatnet']:
                 raise NotImplementedError('Resize input is not implemented for this dataset')
 
-            data_args = dict(batch_size=config['batch_size'],#config['batch_size'], 
+            data_args = dict(batch_size=config['batch_size'],
                             greyscale=config['greyscale'],
                             use_crop=config['use_crop'], 
                             seed=config['seed'])
@@ -118,23 +91,22 @@ def main(config):
             print('train length: ',len(train_indexes), ', val length: ', len(val_indexes))
             assert len(train_indexes) > 0 and len(val_indexes) > 0 and len(train_indexes)> len(val_indexes), 'Wrong train/val split'
             
-            # train = get_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args)
-            # # train = tf.data.Dataset.from_generator(train)
-            # val = get_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args)
 
             train = get_tf_dataset(config['dataset']['name'], dataset_config, train_indexes, data_args).get()
             val = get_tf_dataset(config['dataset']['name'], dataset_config, val_indexes, data_args).get()
 
-            # train = tf.data.Dataset.from_generator(train)
-            # val = tf.data.Dataset.from_generator(train)
+
+            ################################################################################################################
+            ###################################### Metrics, losses and optimizer ###########################################
+            ################################################################################################################
+
 
             input_shape = get_shape(dataset_config, measure=True, greyscale=config['greyscale'], resize_input_shape=resize_input_shape)
 
             output_shape = get_shape(dataset_config, measure=False, greyscale=config['greyscale'], resize_input_shape=resize_input_shape)
 
-            # losses
+
             loss_dict, dynamic_weights = get_losses(config, output_shape, config['batch_size'])
-            # metrics
             metrics, metric_weights = get_metrics(config, output_shape, config['batch_size'])
 
 
@@ -142,8 +114,12 @@ def main(config):
             Opt_class = tf.keras.optimizers.get(opt_config['identifier']).__class__
             opt_config.pop('identifier')
             optimizer = Opt_class(**opt_config)
-            # don't work with tf 12.0
-            # optimizer = tf.keras.optimizers.get(config['optimizer']['identifier'], **config['optimizer']['kwargs'])         
+      
+
+
+            ################################################################################################################
+            ###################################### Model generation ########################################################
+            ################################################################################################################
 
 
             input = Input(shape=input_shape, name='input', dtype='float32')
@@ -172,7 +148,7 @@ def main(config):
                 
             model_config = dict(config['model'][config['model_name']])
             model_type = model_config.pop('type')
-            # TODO : add experimental support for other models
+
             if model_type == 'unet':
                 model_output = [u_net(input=input, **model_config, out_shape=output_shape)]
             else:
@@ -191,6 +167,10 @@ def main(config):
                                             perceptual_model=perceptual_model)      
 
 
+        ################################################################################################################
+        ############################################# Discriminator setup ##############################################
+        ################################################################################################################
+
             discr_args = None
             if config['use_discriminator']:
                 d_model = get_discriminator(output_shape, **config['discriminator']['model'])
@@ -204,21 +184,12 @@ def main(config):
                 adv_weight = config['discriminator']['weight']
                 discr_args = dict(model=d_model, optimizer=d_optimizer, adv_weight=adv_weight, label_smoothing=config['discriminator']['label_smoothing'])
 
-
-
-            # model = compile_model(gen_model=gen_model, 
-            #                     gen_optimizer=optimizer, 
-            #                     loss_dict=loss_dict, 
-            #                     metrics=metrics, 
-            #                     metric_weights=metric_weights, 
-            #                     discr_args=discr_args,
-            #                     in_shape=input_shape, 
-            #                     out_shape=output_shape,
-            #                     global_batch_size=config['batch_size'],#config['batch_size'],
-            #                     distributed_gpu=config['distributed_gpu'],
-            #                     num_gpus=len(gpus))
             
             
+
+        ################################################################################################################
+        ############################################# Model optimization ###############################################
+        ################################################################################################################
             
             assert int(config['weight_pruning']) + int(config['weight_clustering']) + int(config['QAT']) <= 1, 'At most one weight modification can be applied at a time'
 
@@ -240,6 +211,23 @@ def main(config):
                                                 perceptual_model=cluster_perceptual_model)
 
             
+            # gen_model = tf.keras.models.load_model(config['pretrained_path_pb'], safe_mode=False,
+            #                                         compile=False)
+            
+
+
+            # # print(gen_model.summary())
+            # gen_model = tfmot.sparsity.keras.strip_pruning(gen_model)
+            # # print(gen_model.summary())
+            # gen_model = ReconstructionModel3(input_shape=input_shape,
+            #                                     camera_inversion_layer=gen_model.layers[0],
+            #                                     perceptual_model=gen_model.layers[1])
+
+            if config['load_pretrained']:
+                print('loading pretrained model ...')
+                gen_model.load_weights(config['pretrained_path_pb']).expect_partial()
+
+
             if config['QAT']:
                 scope = {}
                 qat_camera_inversion_layer = None
@@ -251,15 +239,8 @@ def main(config):
                                      'FTLayer': FTLayer}
 
                 qat_perceptual_model = quantize_annotate_model(gen_model.perceptual_model)
-
-                # gen_model = ReconstructionModel3(input_shape=input_shape, 
-                #                         # output_shape=output_shape, 
-                #                             camera_inversion_layer=qat_camera_inversion_layer,
-                #                             perceptual_model=qat_perceptual_model)
                 
                 perceptual_model = qat_perceptual_model
-
-
 
                 with quantize_scope(scope):
                     scheme = dict(QAT=tfmot.quantization.keras.default_8bit.Default8BitQuantizeScheme(),
@@ -271,8 +252,6 @@ def main(config):
                     if qat_camera_inversion_layer:
                         qat_camera_inversion_layer = quantize_apply(qat_camera_inversion_layer, scheme=scheme[config['QAT_scheme']])
 
-                    # print(qat_camera_inversion_layer.summary())
-                    # print(qat_perceptual_model.summary())
 
                     gen_model = ReconstructionModel3(input_shape=input_shape,
                                                     camera_inversion_layer=qat_camera_inversion_layer,
@@ -280,6 +259,11 @@ def main(config):
                     print(gen_model.summary())
 
 
+
+            print(get_model_memory_usage(batch_size=1,
+                                         model=gen_model.perceptual_model))
+            print(get_model_memory_usage(batch_size=config['batch_size'], model=tf.keras.Sequential([Input(shape=input_shape, name='input', dtype='float32'),
+                                                gen_model.camera_inversion_layer])))
 
 
             model = compile_model(gen_model=gen_model, 
@@ -298,31 +282,25 @@ def main(config):
             print('='*70)
             print('='*70)
             print(model.summary())
-
-            # sys.exit()
             
 
-            
+            # if config['load_pretrained']:
+            #     print('loading pretrained model ...')
+            #     model.load_weights(config['pretrained_path_pb']).expect_partial()
 
-            if config['load_pretrained']:
-                print('loading pretrained model ...')
-                model.load_weights(config['pretrained_path_pb']).expect_partial()
-
-                if config['load_pretrained_optimizer']:
-                    test_model = tf.keras.models.load_model(config['pretrained_path_pb'], safe_mode=False,
-                                                    compile=False)
+            #     if config['load_pretrained_optimizer']:
+            #         test_model = tf.keras.models.load_model(config['pretrained_path_pb'], safe_mode=False,
+            #                                         compile=False)
                     
-                    symbolic_weights = getattr(test_model.optimizer, 'variables')
-                    weight_values = K.batch_get_value(symbolic_weights)
+            #         symbolic_weights = getattr(test_model.optimizer, 'variables')
+            #         weight_values = K.batch_get_value(symbolic_weights)
 
-                    optimizer.build(model.trainable_variables)
-                    optimizer.set_weights(weight_values)
-                    model.optimizer = optimizer
+            #         optimizer.build(model.trainable_variables)
+            #         optimizer.set_weights(weight_values)
+            #         model.optimizer = optimizer
                 
                     # print(model.optimizer.variables)
                 
-
-
 
 
             checkpoint_path = os.path.join(store_folder, 'checkpoints')
@@ -337,7 +315,6 @@ def main(config):
                                     dynamic_weights=dynamic_weights)
             
 
-            
 
             model.fit(train,
                     epochs=config['epochs'],
@@ -349,6 +326,9 @@ def main(config):
                     verbose=config['verbose'])
 
             model.load_weights(checkpoint_path).expect_partial()
+
+            print(print('size before pruning: ', get_gzipped_model_size(gen_model, 'mb'), 'MB'))
+
 
             if config['save']:
                 print('saving model ...')
@@ -367,13 +347,67 @@ def main(config):
                     name_gen += '_pruned'
                     print('size before pruning: ', get_gzipped_model_size(gen_model, 'mb'), 'MB')
                     gen_model = tfmot.sparsity.keras.strip_pruning(gen_model)
+                    # print('size after pruning: ', get_gzipped_model_size(gen_model, 'mb'), 'MB')
+
+
+                    tf.keras.models.save_model(gen_model, '/home/jreymond/lensless_ml/temporary/gen_pruned.pb', include_optimizer=False)
+
+                    tf.keras.models.save_model(gen_model.layers[1], '/home/jreymond/lensless_ml/temporary/pruned_perceptual.pb', include_optimizer=False)
+
+                    
+                    # perceptual_model=gen_model.layers[1]
+
+                    perceptual = gen_model.layers[1]
+                    converter = tf.lite.TFLiteConverter.from_keras_model(perceptual)
+                    tflite_clustered_model = converter.convert()
+                    with open('/home/jreymond/lensless_ml/temporary/pruned.tflite', 'wb') as f:
+                        f.write(tflite_clustered_model)
+
+                    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+                    tflite_clustered_model = converter.convert()
+                    with open('/home/jreymond/lensless_ml/temporary/pruned_weight.tflite', 'wb') as f:
+                        f.write(tflite_clustered_model)
+
                     print('size after pruning: ', get_gzipped_model_size(gen_model, 'mb'), 'MB')
+                    
+                    
+
                     
                 if config['weight_clustering']:
                     name_gen += '_clustered'
-                    print('size before clustering: ', get_gzipped_model_size(gen_model, 'mb'), 'MB')
+                    # print('size before clustering: ', get_gzipped_model_size(gen_model, 'mb'), 'MB')
                     gen_model = tfmot.clustering.keras.strip_clustering(gen_model)
                     print('size after clustering: ', get_gzipped_model_size(gen_model, 'mb'), 'MB')
+
+                    tf.keras.models.save_model(gen_model, '/home/jreymond/lensless_ml/temporary/gen_cluster.pb', include_optimizer=False)
+
+                    tf.keras.models.save_model(gen_model.layers[1], '/home/jreymond/lensless_ml/temporary/perceptual.pb', include_optimizer=False)
+
+                    # perceptual_model=gen_model.layers[1]
+
+                    perceptual = gen_model.layers[1]
+                    converter = tf.lite.TFLiteConverter.from_keras_model(perceptual)
+                    tflite_clustered_model = converter.convert()
+                    with open('/home/jreymond/lensless_ml/temporary/cluster.tflite', 'wb') as f:
+                        f.write(tflite_clustered_model)
+
+                    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+                    tflite_clustered_model = converter.convert()
+                    with open('/home/jreymond/lensless_ml/temporary/cluster_weight.tflite', 'wb') as f:
+                        f.write(tflite_clustered_model)
+
+                    converter.target_spec.supported_ops = [ 
+                                                tf.lite.OpsSet.TFLITE_BUILTINS_INT8,
+                                                # tf.lite.OpsSet.TFLITE_BUILTINS,
+                                                # tf.lite.OpsSet.SELECT_TF_OPS
+                                                  ] 
+                    converter.representative_dataset = lambda: (i for (i, j) in val.take(4))
+
+                    tflite_clustered_model = converter.convert()
+                    with open('/home/jreymond/lensless_ml/temporary/cluster_weight_quant.tflite', 'wb') as f:
+                        f.write(tflite_clustered_model)
+
+
 
                 name_gen += '.pb'
 
@@ -398,12 +432,8 @@ def main(config):
                 tf.keras.models.save_model(gen_model.perceptual_model, os.path.join(store_path, 'perceptual_model.pb'), include_optimizer=False)
 
 
-
-
                 name =  config['model_name'] + '.pb'
                 tf.saved_model.save(model, os.path.join(store_path, name))
-
-
 
 
             sys.stdout = sys.__stdout__

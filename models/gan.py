@@ -1,3 +1,10 @@
+# #############################################################################
+# gan.py
+# =================
+# Author :
+# Jonathan REYMOND [jonathan.reymond7@gmail.com]
+# #############################################################################
+
 from keras.models import Model
 import tensorflow as tf
 import numpy as np
@@ -88,8 +95,6 @@ class FlatNetGAN(Model):
         self.mse_weight = mse_weight
         self.perc_weight = perc_weight
         
-
-    # TODO : check
     def call(self, inputs):
         return self.generator(inputs)
 

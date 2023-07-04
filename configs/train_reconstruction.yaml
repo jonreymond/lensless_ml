@@ -1,22 +1,26 @@
 defaults:
   # - dataset: flatnet_dataset
-  - dataset: phlatnet_dataset
-  # - dataset : wallerlab_dataset
+  # - dataset: phlatnet_dataset
+  - dataset : wallerlab_dataset
   
   - model: default_models
   - _self_
 #will load specs of wallerlab_unet in default_models
 # model_name: unet128_sep
-model_name: unet128_gen
+# model_name: unet128_gen
 # model_name: wallerlab_unet
-# model_name: unet64
-# model_name: unet64
+model_name: unet64
 
-test: False
 
-resize_input: True
-resize_input_height: 480
-resize_input_width: 640
+test: True
+
+# if record output terminal: if error, only the error file is shown: 
+# do not use for debugging
+record_output: True
+
+resize_input: False
+resize_input_height: 520
+resize_input_width: 620
 
 # GAN
 use_discriminator: False
@@ -44,9 +48,9 @@ clustering_params:
   preserve_sparsity: False
 
 # Quantization Aware Training
-QAT: False
-QAT_scheme: "QAT" 
-# QAT_scheme: "PQAT" # pruning + QAT
+QAT: True
+# QAT_scheme: "QAT" 
+QAT_scheme: "PQAT" # pruning + QAT
 # QAT_scheme: "CQAT" # clustering + QAT
 # QAT_scheme: "PCQAT" # pruning + clustering + QAT
 
@@ -55,10 +59,10 @@ QAT_scheme: "QAT"
 workers: 32
 # queue_max_size: 32
 
-batch_size: 4
+batch_size: 8
 #validation set percentage
 validation_split: 0.2
-epochs: 75
+epochs: 1
 # to be used to test the train pipeline : will only train on a subset of the dataset
 
 
@@ -74,8 +78,8 @@ use_tensorboard: True
 tensorboard_profile_batch: 20
 
 
-load_pretrained : False
-load_pretrained_optimizer: False
+load_pretrained : True
+load_pretrained_optimizer: True
 load_pretrained_lr : False
 # flatnet
 # pretrained_model_path : /root/jreymond/lensless_ml/outputs/2023-05-10/07-02-20/tensorflow/checkpoints/
@@ -83,9 +87,16 @@ load_pretrained_lr : False
 # pretrained_path : /root/jreymond/lensless_ml/outputs/2023-05-15/12-14-26/tensorflow/checkpoints/
 # pretrained_path : /home/jreymond/lensless_ml/outputs/2023-06-14/16-23-11/tensorflow/checkpoints/
 #best wallerlab set
-pretrained_path_pb : /root/jreymond/lensless_ml/outputs/2023-06-21/07-10-23/tensorflow/models/overal_model.pb
+# pretrained_path_pb : /root/jreymond/lensless_ml/outputs/2023-06-21/07-10-23/tensorflow/models/overal_model.pb
 # pretrained_path_pb : /root/jreymond/lensless_ml/outputs/2023-06-21/tensorflow/models/overal_model.pb
 
+# pretrained_path_pb : /home/jreymond/lensless_ml/outputs/2023-06-23/07-02-26/tensorflow/models/overal_model.pb
+
+
+# gen_unet64, perceptual_model.pb, overal_model.pb, camera_inversion_model.pb
+# pruned model
+# pretrained_path_pb: /home/jreymond/lensless_ml/outputs/2023-06-26/18-50-57/tensorflow/models/overal_model.pb
+pretrained_path_pb: /home/jreymond/lensless_ml/outputs/2023-06-26/18-50-57/tensorflow/models/gen_unet64_pruned.pb
 
 
 use_crop: True
@@ -151,7 +162,7 @@ discriminator:
   optimizer:
     args:
       identifier: "adam"
-      learning_rate: 0.0001
+      learning_rate: 0.0005
     
     # Will have the same learning rate as the generator optimizer
     copy_gen_lr: True

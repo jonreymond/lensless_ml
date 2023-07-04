@@ -1,29 +1,40 @@
+# #############################################################################
+# tf_to_tflite.py
+# =================
+# Author :
+# Jonathan REYMOND [jonathan.reymond7@gmail.com]
+# #############################################################################
+
+
 import hydra
 import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 import shutil
 import pathlib
 import numpy as np
 import tensorflow as tf
 import itertools
 from collections import Counter
-from dataset import get_dataset
 from tf_dataset import *
 import sys
 import shutil
 import keras
+from sklearn.model_selection import train_test_split
   
   
-def representative_data_gen(reconstruct_config, camera_inversion=None, num_samples=None):
+def representative_data_gen(reconstruct_config, camera_inversion=None, get_train=True, num_samples=None):
     '''TODO
     '''
     dataset_config = reconstruct_config['dataset']
-    indexes = np.arange(dataset_config['len'])
+    indexes = np.arange(dataset_config['len'])    
 
-    np.random.seed(reconstruct_config['seed'])
-    np.random.shuffle(indexes)
 
-    num_samples = num_samples if num_samples else dataset_config['len']
-    
+    train_indexes, val_indexes = train_test_split(indexes, 
+                                                        test_size=reconstruct_config['validation_split'], 
+                                                        shuffle=True,
+                                                        random_state=reconstruct_config['seed'])
+    indexes = train_indexes if get_train else val_indexes
+    num_samples = num_samples if num_samples else len(indexes)
     indexes = indexes[:num_samples]
     
     # Data Generator : set to 1 the batch size, as we want to evaluate each sample individually
@@ -32,7 +43,7 @@ def representative_data_gen(reconstruct_config, camera_inversion=None, num_sampl
                     use_crop=reconstruct_config['use_crop'], 
                     seed=reconstruct_config['seed'])
     
-    generator = get_tf_dataset(reconstruct_config['dataset']['name'], dataset_config, indexes, data_args)
+    generator = get_tf_dataset(reconstruct_config['dataset']['name'], dataset_config, indexes, data_args).get()
     
     # TODO: check if need to reshape
     # for x in generator:
@@ -46,7 +57,8 @@ def representative_data_gen(reconstruct_config, camera_inversion=None, num_sampl
 
 
 
-def create_tflite_interpreter(export_dir, with_optimization, with_quantization, store_path=None, repr_data_gen=None, use_debug=False):
+def create_tflite_interpreter(export_dir, with_optimization, with_quantization, store_path=None, repr_data_gen=None, use_debug=False,
+                              num_threads=1, use_gpu=False):
     '''Creates the tflite interpreter from a tensorflow model
     Args:
         export_dir (str): location of the trained tensorflow model
@@ -65,11 +77,19 @@ def create_tflite_interpreter(export_dir, with_optimization, with_quantization, 
         
     if with_quantization:
         print('with only unit8 computation')
-        
-        converter.representative_dataset = lambda: repr_data_gen
+        if repr_data_gen:
+            converter.representative_dataset = lambda: repr_data_gen
         
 
-        converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8] 
+        # TFLITE_BUILTINS_INT8: Convert model using only TensorFlow Lite quantized int8 operations.
+        # TFLITE_BUILTINS : Convert model using TensorFlow Lite builtin ops.
+        # SELECT_TF_OPS : with tensorflow ops
+
+        converter.target_spec.supported_ops = [ 
+                                                tf.lite.OpsSet.TFLITE_BUILTINS_INT8,
+                                                # tf.lite.OpsSet.TFLITE_BUILTINS,
+                                                # tf.lite.OpsSet.SELECT_TF_OPS
+                                                  ] 
         
         # converter.inference_input_type = tf.uint8
         # converter.inference_output_type = tf.uint8
@@ -148,12 +168,10 @@ def tflite_to_cc(name_model, tflite_path):
 
 
 
-@hydra.main(version_base=None, config_path="configs", config_name="tflite")
+@hydra.main(version_base=None, config_path="configs", config_name="tflite_conversion")
 def main(config):
-    '''Main function to transform a tensorflow model to a tflite model, and then to a .cc + .h file
-    '''
-    print('='* 80)
 
+    print('='* 80)
 
     num_samples = config['num_samples'] if config['num_samples'] != 'None' else None
     
@@ -163,11 +181,17 @@ def main(config):
     if os.path.exists(camera_inversion_model_path):
         camera_inversion_model = keras.models.load_model(camera_inversion_model_path)
 
-    repr_data_gen = representative_data_gen(config, num_samples=num_samples, camera_inversion=camera_inversion_model)
+    if config['representative_dataset']:
+        repr_data_gen = representative_data_gen(config, num_samples=num_samples, camera_inversion=camera_inversion_model)
+    else:
+        repr_data_gen = None
+
 
     perceptual_model_path = os.path.join(config['store_folder'], 'tensorflow', 'models', 'perceptual_model.pb')
+
     tflite_folder = os.path.join(config['store_folder'], 'tflite')
-    tflite_path = os.path.join(tflite_folder, config['model_name'] + '.tflite')
+    name_model = config['tflite_model_name']
+    tflite_path = os.path.join(tflite_folder, name_model + '.tflite')
     if not os.path.exists(os.path.dirname(tflite_path)):
         os.makedirs(os.path.dirname(tflite_path))
 
@@ -176,7 +200,7 @@ def main(config):
     # print(model.summary())
     # print(model.perceptual_model)
     # print(model.perceptual_model.summary())
-    # sys.exit()
+
     
     tflite_interp_quant = create_tflite_interpreter(perceptual_model_path, 
                                                     with_optimization=config['with_optimization'], 
@@ -186,12 +210,17 @@ def main(config):
                                                     use_debug=config['use_debug']
                                                     )
 
-    tflite_to_cc(name_model=config['model_name'], tflite_path=tflite_path)
+    if config['with_cc_files']:
+        tflite_to_cc(name_model=name_model,
+                    tflite_path=tflite_path)
 
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
     temp_store_folder = hydra_cfg['runtime']['output_dir']
+    if os.path.exists(os.path.join(tflite_folder, '.hydra')):
+        shutil.rmtree(os.path.join(tflite_folder, '.hydra'), ignore_errors=True)
+
     shutil.move(os.path.join(temp_store_folder, '.hydra'), 
-              os.path.join(tflite_folder, '.hydra'))
+              os.path.join(tflite_folder, ''))
     os.rename(os.path.join(temp_store_folder, 'tf_to_tflite.log'),
               os.path.join(tflite_folder, 'tf_to_tflite.log'))
     os.rmdir(temp_store_folder)

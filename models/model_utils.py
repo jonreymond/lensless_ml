@@ -1,3 +1,10 @@
+# #############################################################################
+# model_utils.py
+# =================
+# Author :
+# Jonathan REYMOND [jonathan.reymond7@gmail.com]
+# #############################################################################
+
 from models.unet import *
 from models.camera_inversion import *
 from models.gan import *

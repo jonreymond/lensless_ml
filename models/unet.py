@@ -1,8 +1,15 @@
+# #############################################################################
+# unet.py
+# =================
+# Author :
+# Jonathan REYMOND [jonathan.reymond7@gmail.com]
+# #############################################################################
+
 from keras import regularizers
 
 from keras.layers.convolutional import Conv2D, MaxPooling2D
 from keras.layers.core import Activation
-from keras.layers import BatchNormalization, UpSampling2D, Concatenate, Input, Conv2DTranspose, Resizing, ZeroPadding2D, Lambda
+from keras.layers import BatchNormalization, UpSampling2D, Concatenate, ZeroPadding2D, Lambda
 
 from keras.models import Model
 import tensorflow as tf
@@ -95,10 +102,6 @@ def resize_input(input, factor):
         input += 1
     return input
 
-# enc_filters : [32, 64, 128, 256]
-#   strides: [[2, 1], [1, 2], [1, 2], [1, 2]]
-#   maxpool: false
-#   intermediate_nodes: false
 
 def u_net(input, enc_filters, maxpool=True, intermediate_nodes=False, first_kernel_size=3,
           last_conv_filter=None, num_dec_conv=2, bn_eps=1e-3, out_shape=None, output_activation='tanh',
@@ -147,7 +150,6 @@ def u_net(input, enc_filters, maxpool=True, intermediate_nodes=False, first_kern
         x = conv_block(x, last_conv_filter, kernel_size=3)
     
     
-
     ### "classifier" ###
     num_outputs = 3 if input.shape[1] != 1 else 1
     if depth_space:
@@ -156,16 +158,12 @@ def u_net(input, enc_filters, maxpool=True, intermediate_nodes=False, first_kern
 
     if depth_space:
         x = tf.nn.depth_to_space(x, 2)
-        # x = tf.keras.layers.Resizing(height, width)(input)
 
     if out_shape:
-        # Exact resizing without trainable parameters
-        # x = to_channel_last(x)
         # works, but not quantized
         size = out_shape[0:2]
         x = Lambda(lambda x: tf.image.resize(x, size=size, method=tf.image.ResizeMethod.BILINEAR))(x)
-        # x = tf.keras.layers.Resizing(height=out_shape[1], width=out_shape[2], interpolation='bilinear')(x)
-        # x = to_channel_first(x)
+
 
     
 

@@ -1,19 +1,16 @@
+# #############################################################################
+# camera_inversion.py
+# =================
+# Author :
+# Jonathan REYMOND [jonathan.reymond7@gmail.com]
+# #############################################################################
 
-from keras.layers import GroupNormalization, Input, GlobalAveragePooling2D, Reshape, ZeroPadding2D, Multiply, Cropping2D, CenterCrop
-from keras.layers.convolutional import Conv2D
-from keras.layers.core import Activation
+from keras.layers import Cropping2D
 
-from keras.models import Model
 import tensorflow as tf
-
 import numpy as np
-from keras.losses import MeanSquaredError
-from models.unet import u_net
-
 from utils import *
-from omegaconf import OmegaConf
-import scipy
-from scipy import fft
+
 from scipy.fftpack import next_fast_len
 from scipy.io import loadmat
 from PIL import Image
@@ -21,10 +18,10 @@ import sys
 
 import tensorflow_model_optimization as tfmot
 
+
 ######################################################################
 ############################# Separable ##############################
 ######################################################################
-
 
 
 class SeparableLayer(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer, tfmot.clustering.keras.ClusterableLayer):
@@ -96,25 +93,6 @@ class SeparableLayer(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer, 
 ############################## non-separable ##############################
 ###########################################################################
 
-# @tf.function
-# def fft_conv2d(x, kernel):
-#     """ Computes the convolution in the frequency domain given
-#     Expects input and kernel already in frequency domain
-
-#     Args:
-#         x (tensor): shape (B, C, H, W)
-#         kernel (tensor): shape (H, W, C)
-#     """
-#     kernel = tf.transpose(kernel, (2, 0, 1))
-
-#     x = tf.signal.rfft2d(x)
-#     kernel = tf.signal.rfft2d(kernel)
-    
-#     mult0 = x * kernel
-
-#     result = tf.signal.irfft2d(mult0)
-#     return result
-
 
 def get_wiener_matrix(psf, gamma: int = 20000):
     """get Wiener matrix of PSF
@@ -137,8 +115,6 @@ def get_wiener_matrix(psf, gamma: int = 20000):
     return res.astype(np.float32)
 
 
-
-    
 
 
 
@@ -263,7 +239,6 @@ class FTLayer(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer, tfmot.c
 ##############################################################################################################
 ##############################################################################################################
 ##############################################################################################################
-##############################################################################################################
 
 MAX_UINT8_VAL = 2**8 -1
 MAX_UINT16_VAL = 2**16 -1
@@ -323,10 +298,5 @@ def get_separable_init_matrices(config):
 #         # TODO : add rgb2gray
 #         return FTLayer(**camera_inversion_args, psf=psf)
 
-
-
-##############################################################################################################
-##############################################################################################################
-##############################################################################################################
 
 

@@ -1,3 +1,10 @@
+# #############################################################################
+# tf_dataset.py
+# =================
+# Author :
+# Jonathan REYMOND [jonathan.reymond7@gmail.com]
+# #############################################################################
+
 
 from abc import ABC, abstractmethod
 from utils import *

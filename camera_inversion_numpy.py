@@ -1,6 +1,12 @@
+# #############################################################################
+# camera_inversion_numpy.py
+# =================
+# Author :
+# Jonathan REYMOND [jonathan.reymond7@gmail.com]
+# #############################################################################
+
+
 import numpy as np
-
-
 
 
 def get_activation(name_id):

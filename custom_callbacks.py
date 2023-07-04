@@ -1,33 +1,17 @@
-# import collections
-# import copy
-# import csv
-# import json
-# import os
-# import re
-# import sys
-# import time
+# #############################################################################
+# custom_callbacks.py
+# =================
+# Author :
+# Jonathan REYMOND [jonathan.reymond7@gmail.com]
+# #############################################################################
 
 import numpy as np
 import tensorflow as tf
 
 from keras import backend
-# from keras.distribute import distributed_file_utils
-# from keras.distribute import worker_training_state
-# from keras.optimizers import optimizer_experimental
-# from keras.optimizers.schedules import learning_rate_schedule
-# from keras.utils import generic_utils
 from keras.utils import io_utils
-# from keras.utils import tf_utils
-# from keras.utils import version_utils
-# from keras.utils.data_utils import Sequence
-# from keras.utils.generic_utils import Progbar
-# from keras.utils.mode_keys import ModeKeys
-
-# isort: off
 from tensorflow.python.platform import tf_logging as logging
-# from tensorflow.python.util import deprecation
-# from tensorflow.python.util.tf_export import keras_export
-# from tensorflow.tools.docs import doc_controls
+
 
 try:
     import requests
