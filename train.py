@@ -54,8 +54,7 @@ def main(config):
     gpus = tf.config.list_logical_devices('GPU')
 
     for i in range(1):
-        # To record terminal output:
-
+        # To record terminal output, uncomment the following lines
         # with open(os.path.join(store_folder, 'output.txt'), 'w') as f:
         #     sys.stdout = Tee(sys.stdout, f)
         #     sys.stderr = Tee(sys.stderr, f)
@@ -109,6 +108,7 @@ def main(config):
 
 
             loss_dict = dict()
+            # if the weights change during training, we need to use K.variable
             dynamic_weights = []
             for loss_id in config['loss'].keys():
                 loss_config = config['loss'][loss_id]
@@ -118,7 +118,6 @@ def main(config):
                 if loss_config['additive_factor']:
                     weight = K.variable(weight)
                     dynamic_weights.append((weight, loss_config['additive_factor']))
-
 
                 loss_args = None
                 if loss_id == 'lpips':
@@ -143,7 +142,6 @@ def main(config):
             opt_config.pop('identifier')
             optimizer = Opt_class(**opt_config)
       
-
 
             ################################################################################################################
             ###################################### Model generation ########################################################
@@ -208,7 +206,7 @@ def main(config):
         ############################################# Model optimization ###############################################
         ################################################################################################################
             
-            assert int(config['weight_pruning']) + int(config['weight_clustering']) + int(config['QAT']) <= 1, 'At most one weight modification can be applied at a time'
+            assert int(config['weight_pruning']) + int(config['weight_clustering']) + int(config['QAT']) <= 1, 'At most one weight modification can be applied at a time, to do collaborative optimization, you must train the model one after the other : ex :train prune -> train cluster -> train QAT'
 
             if config['weight_pruning']:
                 prune_camera_inversion_layer = tfmot.sparsity.keras.prune_low_magnitude(gen_model.camera_inversion_layer)
@@ -277,6 +275,9 @@ def main(config):
                     print(gen_model.summary())
 
 
+        ################################################################################################################
+        ############################################# Model compilation + callbacks + train ############################
+        ################################################################################################################
 
             model = compile_model(gen_model=gen_model, 
                                 gen_optimizer=optimizer, 
@@ -296,7 +297,7 @@ def main(config):
             print(model.summary())
 
             
-
+            # to load the optimizer value
             # if config['load_pretrained']:
             #     print('loading pretrained model ...')
             #     model.load_weights(config['pretrained_path_pb']).expect_partial()
@@ -341,7 +342,9 @@ def main(config):
             model.load_weights(checkpoint_path).expect_partial()
 
 
-
+            ################################################################################################################
+            ############################################# Model saving ####################################################
+            ################################################################################################################
 
             if config['save']:
                 print('saving model ...')
@@ -351,7 +354,6 @@ def main(config):
                 
 
 
-                # 
                 name_gen = 'gen_' + config['model_name']
                 if config['weight_pruning']:
                     name_gen += '_pruned'

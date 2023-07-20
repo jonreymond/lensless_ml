@@ -40,31 +40,21 @@ class DataLoader(ABC):
 
 
     def get(self):
-        # load measurements
-        # def map_func(feature_path):
-        #     feature = np.load(feature_path)
-        #     return feature
+        """returns the tf.data.Dataset object containing the data
+
+        Returns:
+            tf.data.Dataset: the dataset object containing the data
+        """
         data_measure = Dataset.from_tensor_slices(self.x_filenames).cache()
         data_measure = self._map_x(data_measure)
-        # data_measure = data_measure.interleave(self._map_x,
-        #                                        cycle_length=36, num_parallel_calls=tf.data.AUTOTUNE,
-        #                                        deterministic=False)
-
-        
 
         data_truth = Dataset.from_tensor_slices(self.y_filenames).cache()
         data_truth = self._map_y(data_truth)
-        # .map(lambda item: tf.numpy_function(np.load, [item], tf.float32))
-        # load ground truth
-        # data_truth = Dataset.from_tensor_slices(self.y_filenames).map(lambda item: tf.numpy_function(
-        #   np.load, [item], tf.float32))
-        # .map(lambda y: tf.py_function(self._get_y, [y], tf.float32))
+
         # zip together
         data = Dataset.zip((data_measure, data_truth))
         # shuffle
         data = data.shuffle(buffer_size=200, reshuffle_each_iteration=True, seed=self.seed)
-
-        # data = data.shuffle(buffer_size=self.num_files, seed=self.seed)
         # batch
         data = data.batch(self.batch_size)
         # prefetch
@@ -252,10 +242,6 @@ class PhlatnetDataLoader(DataLoader):
     
     
     def _map_x(self, data_measure):
-         # -1 :return the loaded image as is (with alpha channel, otherwise it gets cropped) 
-        # read as uint16, channel last
-        # def np_resize(self, x):
-        #     return np.resize(x, self.resize)
         def load_resize(filename):
             img = np.load(filename)
             if self.resize:
@@ -266,8 +252,6 @@ class PhlatnetDataLoader(DataLoader):
         data_measure = data_measure.map(lambda item: tf.cast(tf.numpy_function(load_resize, [item], tf.uint16)/ MAX_UINT12_VAL, tf.float32), 
                                             num_parallel_calls=tf.data.AUTOTUNE)
                    
-
-            
         data_measure = data_measure.map(lambda item: (item -0.5) * 2, 
                                         num_parallel_calls=tf.data.AUTOTUNE)
 
@@ -280,6 +264,7 @@ class PhlatnetDataLoader(DataLoader):
             img = cv2.imread(path.numpy().decode("utf-8"))[:, :, ::-1]/ MAX_UINT8_VAL
             return cv2.resize(img, (self.data_conf['truth_width'], self.data_conf['truth_height'])).astype(np.float32)
         
+        # for original phlatnet dataset
         # def preprocess(path):
         #     path = path.numpy().decode("utf-8") # .numpy() retrieves data from eager tensor
         #     img = cv2.imread(path)[:, :, ::-1] / MAX_UINT8_VAL
@@ -291,8 +276,6 @@ class PhlatnetDataLoader(DataLoader):
         data_truth = data_truth.map(lambda item: tf.py_function(cv_imread, [item], tf.float32),
                                    num_parallel_calls=tf.data.AUTOTUNE)
         
-        # data_truth = data_truth.map(lambda item: (tf.transpose(item, perm=[2, 0, 1]) -0.5) * 2, 
-        #                                 num_parallel_calls=tf.data.AUTOTUNE)
         data_truth = data_truth.map(lambda item: (item -0.5) * 2, 
                                         num_parallel_calls=tf.data.AUTOTUNE)
         return data_truth
@@ -318,6 +301,7 @@ class FlatnetDataLoader(DataLoader):
     def _get_filenames(self):
         def get_name(filename, suffix):
             return os.path.basename(filename).replace(suffix,'')
+        # for original phlatnet dataset
         # if not self.use_cropped_dataset:
         #     dir_x = os.path.join(self.data_conf['path'], self.data_conf['measure_folder'])
         #     x_filenames = sorted(glob.glob(dir_x + '/*/*'), key=lambda f: os.path.basename(f).replace('.png','').replace('.', ''))
@@ -348,10 +332,6 @@ class FlatnetDataLoader(DataLoader):
     
     
     def _map_x(self, data_measure):
-         # -1 :return the loaded image as is (with alpha channel, otherwise it gets cropped) 
-        # read as uint16, channel last
-        # def np_resize(self, x):
-        #     return np.resize(x, self.resize)
         def load_resize(filename):
             img = np.load(filename)
             if self.resize:
@@ -374,6 +354,7 @@ class FlatnetDataLoader(DataLoader):
             img = cv2.imread(path.numpy().decode("utf-8"))[:, :, ::-1]/ MAX_UINT8_VAL
             return cv2.resize(img, (self.data_conf['truth_width'], self.data_conf['truth_height'])).astype(np.float32)
         
+        # for original flatnet dataset
         # def preprocess(path):
         #     path = path.numpy().decode("utf-8") # .numpy() retrieves data from eager tensor
         #     img = cv2.imread(path)[:, :, ::-1] / MAX_UINT8_VAL
@@ -385,8 +366,6 @@ class FlatnetDataLoader(DataLoader):
         data_truth = data_truth.map(lambda item: tf.py_function(cv_imread, [item], tf.float32),
                                    num_parallel_calls=tf.data.AUTOTUNE)
         
-        # data_truth = data_truth.map(lambda item: (tf.transpose(item, perm=[2, 0, 1]) -0.5) * 2, 
-        #                                 num_parallel_calls=tf.data.AUTOTUNE)
         data_truth = data_truth.map(lambda item: (item -0.5) * 2, 
                                         num_parallel_calls=tf.data.AUTOTUNE)
         return data_truth

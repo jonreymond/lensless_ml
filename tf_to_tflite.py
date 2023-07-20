@@ -23,7 +23,13 @@ from sklearn.model_selection import train_test_split
   
   
 def representative_data_gen(reconstruct_config, camera_inversion=None, get_train=True, num_samples=None):
-    '''TODO
+    '''Generates the representative dataset for the quantization of the tflite model, needed for weight quantization
+
+    Args:
+        reconstruct_config (dict): configuration of the reconstruction
+        camera_inversion (keras model, optional): model to invert the camera. Defaults to None.
+        get_train (bool, optional): if True will get the training set, else the validation set. Defaults to True.
+        num_samples (int, optional): number of samples to be used for the representative dataset. Defaults to None.
     '''
     dataset_config = reconstruct_config['dataset']
     indexes = np.arange(dataset_config['len'])    
