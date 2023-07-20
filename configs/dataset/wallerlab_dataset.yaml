@@ -1,7 +1,8 @@
 name: wallerlab
-path: /scratch/DiffuserCam
+path: /scratch/bezzam/DiffuserCam_mirflickr/dataset
 
 type_mask: "non_separable"
+# type_mask: "separable"
 
 truth_folder: ground_truth_lensed
 measure_folder: diffuser_images
@@ -33,10 +34,14 @@ crop:
     size_w: 380
 
 psf:
-  path: /scratch/DiffuserCam/psf.tiff
+  path: /scratch/jreymond/wallerlab/psf.tiff
   height: 1080 
   width: 1920
   crop_size_x: 1080 
   crop_size_y: 1920 
   # centre_x: 808
   # centre_y: 965
+
+random_toeplitz_path: 
+  phi_l: /scratch/jreymond/wallerlab/pseudo_phi_l.npy
+  phi_r: /scratch/jreymond/wallerlab/pseudo_phi_r.npy

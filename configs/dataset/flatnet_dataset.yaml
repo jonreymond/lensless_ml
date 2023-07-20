@@ -1,6 +1,6 @@
   
 name: 'flatnet'
-path: /scratch/jreymond/ICCV-2019-FlatNet-Dataset/Display-Captures
+path: /scratch/jreymond/flatnet
 psf_path: 
 truth_folder: 'groundtruth'
 measure_folder: 'measurements_cropped'
@@ -14,10 +14,10 @@ len: 10000
 
 mask_path : 'TODO'
 
-calibrated_path: '/scratch/jreymond/ICCV-2019-FlatNet-Dataset/initialization matrices/flatcam_prototype2_calibdata.mat'
+calibrated_path: '/scratch/jreymond/flatnet/Initialization matrices/flatcam_prototype2_calibdata.mat'
 random_toeplitz_path: 
-  phi_l: '/scratch/jreymond/ICCV-2019-FlatNet-Dataset/initialization matrices/phil_toep_slope22.mat'
-  phi_r: '/scratch/jreymond/ICCV-2019-FlatNet-Dataset/initialization matrices/phir_toep_slope22.matt'
+  phi_l: '/scratch/jreymond/flatnet/Initialization matrices/phil_toep_slope22.mat'
+  phi_r: '/scratch/jreymond/flatnet/Initialization matrices/phir_toep_slope22.matt'
 
 
 # psf:

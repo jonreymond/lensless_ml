@@ -28,14 +28,14 @@ use_discriminator: False
 # camera inversion
 use_camera_inversion: True
 random_init: False
-camera_inversion_args:
-  separable: None
 
-  non_separable: 
-    activation: linear
-    # gamma: 20000
-    gamma: 50000 # phlatnet
-    pad: False
+
+camera_inversion_non_separable:
+  type: "non_separable"
+  activation: linear
+  # gamma: 20000 # Monakhova
+  gamma: 50000 # phlatnet
+  pad: False
 
 
 # don't change
@@ -98,11 +98,13 @@ load_pretrained_lr : False
 # pretrained_path_pb: /home/jreymond/lensless_ml/outputs/2023-06-26/18-50-57/tensorflow/models/overal_model.pb
 pretrained_path_pb: /home/jreymond/lensless_ml/outputs/2023-06-26/18-50-57/tensorflow/models/gen_unet64_pruned.pb
 
+model_weights_path: 
+
 
 use_crop: True
 
 seed: 1   # Note : will not result in a deterministic output if use cuda device
-verbose: 2
+verbose: 1
 
 optimizer:
   # name of optimizer technique desired
@@ -117,7 +119,7 @@ loss:
     additive_factor: "" #-0.05
   lpips:
     # either vgg or alex
-    model: vgg
+    type_model: vgg
     weight: 1.2
     # either "" or number: additive factor to update the weight of the loss
     additive_factor: "" #0.05
@@ -127,7 +129,7 @@ metric:
    # static weight: used when computing metric, useful to know global loss to store best model
     weight: 1
   lpips:
-    model: vgg
+    type_model: vgg
     weight: 1.2
   psnr:
     weight: 0

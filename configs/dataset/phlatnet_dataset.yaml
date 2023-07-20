@@ -2,7 +2,7 @@
 name: 'phlatnet'
 
 
-path: '/dev/shm/jreymond/phlatnet'
+path: '/scratch/jreymond/phlatnet'
 truth_folder: 'orig'
 
 # measure_folder: 'imagenet_caps_384_12bit_Feb_19'
@@ -17,7 +17,7 @@ len: 9791 # normally 10000, but some measurements are not available
 mask_path : 'TODO'
 
 psf:
-  path: /dev/shm/jreymond/phlatnet/phase_psf/psf_rgb.npy
+  path: /scratch/jreymond/phlatnet/phase_psf/psf_rgb.npy
   # path: /scratch/jreymond/phlatnet/phase_psf/psf_cropped.npy
   # height: 1280 
   # width: 1408

@@ -5,6 +5,7 @@
 # Jonathan REYMOND [jonathan.reymond7@gmail.com]
 # #############################################################################
 
+import os
 import numpy as np
 import tensorflow as tf
 
@@ -18,7 +19,8 @@ try:
 except ImportError:
     requests = None
 
-from keras.callbacks import Callback
+from keras.callbacks import Callback, ReduceLROnPlateau, LearningRateScheduler
+import tensorflow_model_optimization as tfmot
 
 
 
@@ -242,6 +244,12 @@ class LearningRateSchedulerCustom(Callback):
 
 class CopyLearningRate(Callback):
     def __init__(self, optimizer_listener, optimizer_target):
+        """copy the learning rate from one optimizer to another
+
+        Args:
+            optimizer_listener (keras.Optimizer): optimizer to listen to
+            optimizer_target (keras.Optimizer): optimizer to copy the learning rate to
+        """
         super().__init__()
         self.optimizer_listener = optimizer_listener
         self.optimizer_target = optimizer_target
@@ -250,3 +258,97 @@ class CopyLearningRate(Callback):
         backend.set_value(self.optimizer_listener.lr, float(backend.get_value(self.optimizer_target.lr)))
         
         
+class ChangeLossWeights(Callback):
+    """Change the weights of the losses during training
+    
+    Args:
+        weights_factors (list): list of tuples (weight, additive_factor) to add to the weight
+    """
+    def __init__(self, weights_factors):
+        self.weights_factors = weights_factors
+
+    def on_epoch_end(self, epoch, logs=None):
+        for weight, additive_factor in self.weights_factors:
+            if weight + additive_factor < 0 :
+                print('\nno weight update, current minus value :', weight)
+            else:
+                backend.set_value(weight, weight + additive_factor)
+
+
+
+
+
+def get_callbacks(model, store_folder, checkpoint_path, dynamic_weights, config):
+    """Get callbacks for training
+    
+    Args:
+        model (keras.Model): model to train
+        store_folder (str): folder to store the logs
+        checkpoint_path (str): path to store the checkpoints
+        dynamic_weights (list): list of tuples (weight, additive_factor) to add to the weight
+        config (dict): configuration dictionnary"""
+
+    model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
+                                            filepath=checkpoint_path,
+                                            save_weights_only=True,
+                                            monitor='val_total',
+                                            mode='min',
+                                            save_best_only=True,
+                                            save_freq="epoch",
+                                            verbose=1)
+    
+    callbacks = [model_checkpoint]
+
+    if config['weight_pruning']:
+        callbacks.append(tfmot.sparsity.keras.UpdatePruningStep())
+        callbacks.append(tfmot.sparsity.keras.PruningSummaries(log_dir=os.path.join(store_folder, 'pruning_logs')))
+
+    if dynamic_weights:
+        print('Using dynamic weights')
+        callbacks.append(ChangeLossWeights(dynamic_weights))
+
+    if config['lr_reducer']['type']:
+        reducer_args = config['lr_reducer']
+        if reducer_args['type'] == "reduce_lr_on_plateau":
+            callbacks.append(ReduceLROnPlateau(**reducer_args['reduce_lr_on_plateau']))
+        elif reducer_args['type'] == "learning_rate_scheduler":
+
+            def lr_scheduler(epoch, lr, epochs_interval, factor, min_lr):
+                if (epoch +1) % epochs_interval == 0 and epoch > 0:
+                    return max(lr * factor, min_lr)
+                else:
+                    return lr
+                
+            scheduler = lambda epoch, lr: lr_scheduler(epoch=epoch, lr=lr, **reducer_args['learning_rate_scheduler'])
+            callbacks.append(LearningRateScheduler(scheduler, verbose=1))
+        else:
+            raise ValueError(reducer_args['type'] + " type is not supported, must be either 'reduce_lr_on_plateau' or 'learning_rate_scheduler'")
+        
+    if config['use_discriminator']:
+        assert not (config['discriminator']['optimizer']['use_lr_reducer'] and config['discriminator']['optimizer']['copy_gen_lr']), 'Cannot use both lr reducer and copy gen lr' 
+        if config['discriminator']['optimizer']['use_lr_reducer']:
+            print('Using discriminator lr reducer')
+            reducer_args = config['discriminator']['optimizer']['lr_reducer']
+            if reducer_args['type'] == "reduce_lr_on_plateau":
+                callbacks.append(ReduceLROnPlateauCustom(model.d_optimizer, **reducer_args['reduce_lr_on_plateau']))
+            elif reducer_args['type'] == "learning_rate_scheduler":
+                callbacks.append(LearningRateSchedulerCustom(model.d_optimizer, **reducer_args['learning_rate_scheduler']))
+            else:
+                raise ValueError(reducer_args['type'] + " type is not supported, must be either 'reduce_lr_on_plateau' or 'learning_rate_scheduler'")
+        elif config['discriminator']['optimizer']['copy_gen_lr']:
+            print('Using discriminator lr copy')
+            callbacks.append(CopyLearningRate(model.d_optimizer, model.optimizer))
+            
+
+
+    if config['use_tensorboard']:
+        tb_path = os.path.join(store_folder, 'tensorboard_logs')
+        if not os.path.isdir(tb_path):
+            os.makedirs(tb_path)
+        tb_callback = tf.keras.callbacks.TensorBoard(tb_path, 
+                                                     histogram_freq = 1, 
+                                                     profile_batch=config['tensorboard_profile_batch'],
+                                                     update_freq='epoch')
+        callbacks.append(tb_callback)
+    
+    return callbacks

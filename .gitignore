@@ -8,4 +8,5 @@ sample_imgs/
 figs/
 tflite_models/
 temporary/
-results/
+img_results/
+outputs_icc146/

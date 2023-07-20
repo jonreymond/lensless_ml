@@ -15,16 +15,18 @@ import tensorflow as tf
 from keras.losses import Loss
 import yaml
 import numpy as np
-
+import keras
 from keras.losses import MeanSquaredError
 
 import sys
 import io
 
+from scipy.io import loadmat
+from PIL import Image
+import cv2
 
 
 
-MAX_UINT16_VAL = 2**16 -1
 
 
 # from project
@@ -47,6 +49,19 @@ def rgb2gray(rgb, weights=np.array([0.299, 0.587, 0.114])):
 
 
 def tf_rgb2gray(rgb, weights=tf.constant([0.299, 0.587, 0.114], dtype=tf.float32)):
+    """
+    Convert RGB array to grayscale, Tensorflow version.
+    Parameters
+    ----------
+    rgb : :py:class:`~~tf.Tensor`
+        (N_height, N_width, N_channel) image.
+    weights : :py:class:`~tf.Tensor`
+        [Optional] (3,) weights to convert from RGB to grayscale.
+    Returns
+    -------
+    img :py:class:`~~tf.Tensor`
+        Grayscale image of dimension (height, width).
+    """
     assert len(weights) == 3
     return tf.expand_dims(tf.tensordot(rgb, weights, axes=((2,), 0)), -1)
 
@@ -77,6 +92,9 @@ def to_channel_first(x):
 
 
 def get_shape(data_config, measure, greyscale=False, resize_input_shape=None):
+    """
+    Get the shape of the input data from hydra config file
+    """
     pref = 'measure_' if measure else 'truth_'
 
     num_channels = 1 if greyscale else data_config[pref + 'channels']
@@ -89,6 +107,14 @@ def get_shape(data_config, measure, greyscale=False, resize_input_shape=None):
 
 
 def get_config_from_yaml(path):
+    """get hydra config from yaml file
+
+    Args:
+        path (str): path to yaml file
+
+    Returns:
+        _type_: hydra config file
+    """
     with open(path, "r") as stream:
         try:
             config = yaml.safe_load(stream)
@@ -96,10 +122,101 @@ def get_config_from_yaml(path):
             print(exc)
     return config
 
+
+
+def extract_bayer(arr):
+    """Extract bayer pattern from raw image
+
+    Args:
+        arr (np.array): raw bayer image of shape (height, width)
+
+    Returns:
+        np.array: image of shape (height, width, 4) with bayer pattern
+    """
+    raw_h, raw_w = arr.shape
+    img = np.zeros((raw_h // 2, raw_w // 2, 4), dtype=np.float32)
+
+    img[:, :, 0] = arr[0::2, 0::2]  # r
+    img[:, :, 1] = arr[0::2, 1::2]  # gr
+    img[:, :, 2] = arr[1::2, 0::2]  # gb
+    img[:, :, 3] = arr[1::2, 1::2]  # b
+    # tform = skimage.transform.SimilarityTransform(rotation=0.00174)
+    # img = skimage.transform.warp(img, tform)
+    return img
+
+
+
+def to_tf_graph(torch_model, sample_input, store_output):
+    """convert a torch model to a tensorflow graph model
+
+    Args:
+        torch_model (torch model): torch model to convert
+        sample_input (tuple): sample input of the model
+        store_output (str): path to store the output
+    """
+    import torch
+    import onnx
+    from onnx_tf.backend import prepare
+
+
+    print('exporting torch to onnx model...')
+    torch_model.eval()
+
+    # torch_out = torch_model(sample_input)    
+
+    torch.onnx.export(model = torch_model,               # model being run
+                  args = sample_input,                         # model input (or a tuple for multiple inputs)
+                  f = store_output,   # where to save the model (can be a file or file-like object)
+                  export_params = True,        # store the trained parameter weights inside the model file
+                  opset_version=10,          # the ONNX version to export the model to
+                  verbose=True,
+                  do_constant_folding=True,  # whether to execute constant folding for optimization
+                  input_names = ['input1', 'input2'],   # the model's input names
+                  output_names = ['output'], # the model's output names
+                #   training=torch.onnx.TrainingMode.TRAINING,
+                  dynamic_axes={'input' : {0 : 'batch_size'},    # variable length axes
+                                'output' : {0 : 'batch_size'}})
+    
+    print('onnx model saved to ', store_output)
+    onnx_model = onnx.load(store_output)
+
+    # load and change dimensions to be dynamic
+    for dim in (0, 2, 3):
+        onnx_model.graph.input[0].type.tensor_type.shape.dim[dim].dim_param = '?'
+        onnx_model.graph.input[1].type.tensor_type.shape.dim[dim].dim_param = '?'
+
+    # onnx_model, success = onnxsim.simplify(store_output)
+    # assert success, 'Failed to simplify the ONNX model. You may have to skip this step'
+    # simple_onnx_model_path =  f'{store_output}.simple.onnx'
+    # print(f'Generating {simple_onnx_model_path} ...')
+    # onnx.save(onnx_model, simple_onnx_model_path)
+
+    # writer.add_onnx_graph(store_output)
+    onnx.checker.check_model(onnx_model)
+    print(onnx.helper.printable_graph(onnx_model.graph))
+
+    tf_rep = prepare(onnx_model)  # prepare tf representation
+    tf_rep.export_graph(store_output + '.pb') 
+
+    return tf.keras.models.load_model(store_output + '.pb')
+
+#############################################################################################
+###################################### Loss functions #######################################
+#############################################################################################
+
+
 # To store the resulted lpips if used in training and testing and not create 2 instances
 LPIPS_LOSS = None
+def get_lpips_loss(type_model, shape, batch_size, reduction):
+    """
+    Get the lpips loss function from a torch model and store it in memory to avoid creating it multiple times
+    
+    Args:
+        type_model (str): type of model to use for lpips
+        shape (tuple): shape of the input data
+        batch_size (int): batch size of the input data
+        reduction (str): reduction type of the loss function (tf.keras.losses.Reduction)"""
 
-def get_lpips_loss(model, shape, batch_size, reduction):
     global LPIPS_LOSS
     if LPIPS_LOSS:
         return LPIPS_LOSS
@@ -114,18 +231,18 @@ def get_lpips_loss(model, shape, batch_size, reduction):
             shape_str += '_' + str(s)
         channel = shape[-1]
         shape_str = '_' + str(channel) + shape_str
-        return 'lpips_' + model + '_shape' + shape_str
+        return 'lpips_' + type_model + '_shape' + shape_str
     
     lpips_path = os.path.join('lpips_losses', get_lpips_name())
 
     if not os.path.exists(lpips_path + '.pb'):
         from lpips import LPIPS
         import torch
-        from torch_to_tf import to_tf_graph
+
 
         print('creating lpips loss...')
         print('target shape :', shape)
-        lpips_loss = LPIPS(net=model)#.cuda()
+        lpips_loss = LPIPS(net=type_model)#.cuda()
         #change to satisfy with torch order : first channels
         shape = (shape[-1], *shape[:-1])
         print('sample input shape :', shape)
@@ -154,26 +271,21 @@ def get_lpips_loss(model, shape, batch_size, reduction):
 
 
 
-class ChangeLossWeights(tf.keras.callbacks.Callback):
-    def __init__(self, weights_factors):
-        self.weights_factors = weights_factors
-
-    def on_epoch_end(self, epoch, logs=None):
-        for weight, additive_factor in self.weights_factors:
-            if weight + additive_factor < 0 :
-                print('\nno weight update, current minus value :', weight)
-            else:
-                K.set_value(weight, weight + additive_factor)
-
-
         
 
 # TODO : transform to support dict
 class LossCombiner(Loss):
     def __init__(self, losses, loss_weights=None, name='loss_combination', **kwargs):
+        """Combines several losses into a single loss function.
+
+        Args:
+            losses (list): list of losses to combine.
+            loss_weights (list[float32], optional): list of the weights corresponding to each loss function. Defaults to None.
+            name (str, optional): name of the loss. Defaults to 'loss_combination'.
+        """
         super().__init__(name=name, **kwargs)
         if loss_weights:
-            assert len(losses) == len(loss_weights), 'the number of weights do not correspond to the number of losses'
+            assert len(losses) == len(loss_weights), 'the number of weights do not correspond to the number of loss functions'
             self.loss_weights = loss_weights
         else:
             self.loss_weights = [1] * len(losses)
@@ -189,8 +301,13 @@ class LossCombiner(Loss):
         return config
 
 
+
 class LossNamer(Loss):
     def __init__(self, loss, name, **kwargs):
+        """Wraps a loss function to a keras Loss object with a name.
+        Args:
+            loss (Loss): loss function to wrap.
+            name (str): name of the loss."""
         super().__init__(name=name, **kwargs)
         self.loss = loss
 
@@ -203,51 +320,102 @@ class LossNamer(Loss):
         return config
 
 
-# class MSEChannelFirst(Loss):
-#     def __init__(self, name='mse'):
-#         super().__init__(name=name)
-
-#     def call(self, y_true, y_pred):
-#         y_pred = tf.convert_to_tensor(y_pred)
-#         y_true = tf.cast(y_true, y_pred.dtype)
-#         return K.mean(tf.math.squared_difference(y_pred, y_true), axis=1)
 
 
 
 
-def extract_bayer(arr):
-    raw_h, raw_w = arr.shape
-    img = np.zeros((raw_h // 2, raw_w // 2, 4), dtype=np.float32)
-
-    img[:, :, 0] = arr[0::2, 0::2]  # r
-    img[:, :, 1] = arr[0::2, 1::2]  # gr
-    img[:, :, 2] = arr[1::2, 0::2]  # gb
-    img[:, :, 3] = arr[1::2, 1::2]  # b
-    # tform = skimage.transform.SimilarityTransform(rotation=0.00174)
-    # im1=skimage.transform.warp(im1,tform)
-    return img
-
-def get_loss_from_name(name_id, distributed_gpu, loss_args=None):
+def get_loss(name_id, distributed_gpu, loss_args=None):
     reduction = tf.keras.losses.Reduction.NONE if distributed_gpu else tf.keras.losses.Reduction.AUTO
     if name_id == 'mse':
-        # def custom_mse(y_true, y_pred):
-        # return tf.math.reduce_mean(tf.square(y_true - y_pred), axis=[1, 2, 3], keepdims=True)
         if distributed_gpu:
             return LossNamer(lambda x, y: tf.math.reduce_mean(tf.square(x - y), axis=[1, 2, 3], keepdims=True),
                               'mse', reduction=reduction)
-        return MeanSquaredError(name='mse', reduction=reduction)
+        else:
+            return MeanSquaredError(name='mse', reduction=reduction)
     elif name_id == 'lpips':
-        # lpips_model=loss_config['model'], shape=shape, batch_size=batch_size, 
         return get_lpips_loss(reduction=reduction, **loss_args)
-    elif name_id == 'ssim':
-        return LossNamer(ssim, 'ssim', reduction=reduction)
-    elif name_id == 'psnr':
-        return LossNamer(psnr, 'psnr', reduction=reduction)
     else:
-        raise NotImplementedError('loss not implemented')
+        raise NotImplementedError('loss not implemented: ' + name_id)
+
+
+
+class DistributedLossCombiner(Loss):
+    def __init__(self, losses, loss_weights=None, name='total', global_batch_size=None, **kwargs):
+        """Combines several losses into a single loss function, but reduces manually the loss in case of distributed gpu training.
+
+        Args:
+            losses (list): list of losses to combine.
+            loss_weights (list[float32], optional): list of the weights corresponding to each loss function. Defaults to None.
+            name (str, optional): name of the loss. Defaults to 'loss_combination'.
+        """
+        self.losses = losses
+        self.loss_weights = loss_weights
+        self.global_batch_size = global_batch_size
+        super().__init__(name=name, reduction=tf.keras.losses.Reduction.NONE, **kwargs)
+
+    def call(self, y_true, y_pred):
+        loss = tf.add_n([weight * tf.nn.compute_average_loss(loss(y_true, y_pred), global_batch_size=self.global_batch_size) for weight, loss in zip(self.loss_weights, self.losses)])
+
+        # if model_losses:
+        #     loss += tf.nn.scale_regularization_loss(tf.add_n(model_losses))
+        return loss
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'losses': self.losses,
+            'loss_weights': self.loss_weights,
+            'global_batch_size': self.global_batch_size
+        })
+        return config
+
+
+class DistributedLoss(Loss):
+    def __init__(self, loss, name, global_batch_size, **kwargs):
+        """Wraps a loss function to a keras Loss object with a name, but reduces manually the loss in case of distributed gpu training.
+
+        Args:
+            loss (Loss): loss function to wrap.
+            name (str): name of the loss."""
+        
+        self.loss = loss
+        self.global_batch_size = global_batch_size
+        super().__init__(name=name, reduction=tf.keras.losses.Reduction.NONE, **kwargs)
+        
+    
+    def call(self, y_true, y_pred):
+        per_sample_loss = self.loss(y_true, y_pred)
+        loss = tf.nn.compute_average_loss(per_sample_loss, global_batch_size=self.global_batch_size)
+        # if model_losses:
+        #     loss += tf.nn.scale_regularization_loss(tf.add_n(model_losses))
+        return loss
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'loss': self.loss,
+            'global_batch_size': self.global_batch_size
+        })
+        return config
+    
+#############################################################################################
+###################################### Metric functions #####################################
+#############################################################################################
+
+
+
 
 
 def ssim(x, y):
+    """computes the structural similarity index between two images.
+
+    Args:
+        x (tf.Tensor): first image of shape [batch_size, height, width, channels]
+        y (tf.Tensor): second image of shape [batch_size, height, width, channels]
+
+    Returns:
+        tf.Tensor: structural similarity index between x and y of shape [batch_size]
+    """
     # rescale from [-1, 1] to [0, 1]
     x = (x + 1) / 2
     y = (y + 1) / 2
@@ -256,6 +424,15 @@ def ssim(x, y):
 
 
 def psnr(x, y):
+    """computes the peak signal-to-noise ratio between two images.
+
+    Args:
+        x (tf.Tensor): first image of shape [batch_size, height, width, channels]
+        y (tf.Tensor): second image of shape [batch_size, height, width, channels]
+
+    Returns:
+        tf.Tensor: peak signal-to-noise ratio between x and y of shape [batch_size]
+    """
     # rescale from [-1, 1] to [0, 1]
     x = (x + 1) / 2
     y = (y + 1) / 2
@@ -263,44 +440,43 @@ def psnr(x, y):
     return tf.image.psnr(x, y, max_val=1.0)
 
 
+def get_metric(name_id, distributed_gpu=False, loss_args=None):
+    """get metric from name
 
+    Args:
+        name_id (str): name of desired metric
+        distributed_gpu (bool, optional): whether to use distributed gpu metric. Defaults to False.
+        loss_args (dict, optional): optional parameters for the corresponding loss (for LPIPS in particular). Defaults to None.
+
+    Raises:
+        NotImplementedError: _description_
+
+    Returns:
+        _type_: _description_
+    """
+    if distributed_gpu:
+        raise NotImplementedError('distributed gpu metric not implemented')
+    
+    
+    if name_id == 'ssim':
+        return keras.metrics.MeanMetricWrapper(ssim, name='ssim')
+    elif name_id == 'psnr':
+        return keras.metrics.MeanMetricWrapper(psnr, name='psnr') 
+    elif name_id == 'lpips':
+        reduction = tf.keras.losses.Reduction.NONE if distributed_gpu else tf.keras.losses.Reduction.AUTO
+        return get_lpips_loss(reduction=reduction, **loss_args)
+    else:
+        return keras.metrics.MeanMetricWrapper(keras.metrics.get(name_id), name=name_id)
 
 
 ##########################################################################################
 ############################ Model optimization visualization ############################
 ##########################################################################################
-def get_size(file_path, unit='bytes'):
-    file_size = os.path.getsize(file_path)
-    exponents_map = {'bytes': 0, 'kb': 1, 'mb': 2, 'gb': 3}
-    if unit not in exponents_map:
-        raise ValueError("Must select from \
-        ['bytes', 'kb', 'mb', 'gb']")
-    else:
-        size = file_size / 1024 ** exponents_map[unit]
-        return round(size, 3)
+
+
     
 
-def get_gzipped_model_size(model, unit='bytes'):
-    import os
-    import zipfile
-    import tempfile
-    # It returns the size of the gzipped model in bytes.
-    _, keras_file = tempfile.mkstemp('.h5') 
 
-    # model = model.copy()
-    for i in range(len(model.weights)):
-        model.weights[i]._handle_name = model.weights[i].name + "_" + str(i).zfill(5)
-
-    model.save(keras_file, include_optimizer=False)
-
-    for i in range(len(model.weights)):
-        model.weights[i]._handle_name = model.weights[i].name[:-6]
-
-
-    _, zipped_file = tempfile.mkstemp('.zip')
-    with zipfile.ZipFile(zipped_file, 'w', compression=zipfile.ZIP_DEFLATED) as f:
-        f.write(keras_file)
-    return get_size(zipped_file, unit)
 
 
 class Tee(io.TextIOBase):
@@ -315,10 +491,6 @@ class Tee(io.TextIOBase):
 # from https://stackoverflow.com/questions/43137288/how-to-determine-needed-memory-of-keras-model
 def get_model_memory_usage(batch_size, model):
     import numpy as np
-    try:
-        from keras import backend as K
-    except:
-        from tensorflow.keras import backend as K
 
     shapes_mem_count = 0
     internal_model_mem_count = 0
@@ -354,3 +526,39 @@ def get_model_memory_usage(batch_size, model):
 
 
 
+def get_separable_init_matrices(config):
+    if config['name'] == 'flatnet':
+        d = loadmat(config['calibrated_path'])
+        phi_l = d['P1gb']
+        phi_r = d['Q1gb']
+        return phi_l, phi_r
+    elif config['name'] == 'wallerlab':
+        phi_l = np.load(config['random_toeplitz_path']['phi_l']).astype('float32')
+        phi_r = np.load(config['random_toeplitz_path']['phi_r']).astype('float32')
+        return phi_l, phi_r
+    else:
+        raise NotImplementedError('Only flatnet dataset implemented, implement the loading of the left-right matrices for this dataset')
+
+
+
+MAX_UINT8_VAL = 2**8 -1
+
+def get_psf(data_config, input_shape=None):
+    psf_config = data_config['psf']
+    if data_config['name'] == 'wallerlab':
+        psf = (np.array(Image.open(psf_config['path'])) / MAX_UINT8_VAL).astype('float32')
+        return psf
+    
+    elif data_config['name'] == 'phlatnet':
+        psf = np.load(psf_config['path']).astype('float32')
+
+        # psf = psf[:: data_config['downsample'], :: data_config['downsample'], :]
+        if input_shape is not None:
+            psf = cv2.resize(psf, (input_shape[1], input_shape[0]))
+            print('psf shape', psf.shape, 'psf type', psf.dtype)
+        return psf
+    
+    elif data_config['name'] == 'flatnet':
+        raise NotImplementedError('flatnet dataset not implemented yet')
+    else:
+        raise ValueError(f'Unknown dataset name: {data_config["name"]}, please define how to extract the psf for this dataset')

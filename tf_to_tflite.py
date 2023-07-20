@@ -45,11 +45,7 @@ def representative_data_gen(reconstruct_config, camera_inversion=None, get_train
     
     generator = get_tf_dataset(reconstruct_config['dataset']['name'], dataset_config, indexes, data_args).get()
     
-    # TODO: check if need to reshape
-    # for x in generator:
-    #     print(x[0].shape)
-    #     break
-    # return ([np.array(x[0], dtype=np.float32)] for x in generator)
+
     if camera_inversion:
         return ([tf.dtypes.cast(camera_inversion(data), tf.float32)] for data, ground_truth in generator.take(num_samples))
     else:
