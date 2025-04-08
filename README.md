@@ -19,6 +19,6 @@
 - utils : utilitary methods, mostly used during the training
 
 ## Remarks
-- To use the Tensoboard visualization, you have to run "tensorboard --logdir 'path to tensoboard folder'"
+- To use the Tensorboard visualization, you have to run "tensorboard --logdir 'path to tensoboard folder'"
 - The binary files to get the benchmark of Tlite models can be found in this [link](https://www.tensorflow.org/lite/performance/measurement)
 - For visualizing the tflite model, run : "python -m tflite_visualize 'model'.tflite visualized_model.html". It will generate an html file. This can be useful to see which operators are used in the tflite model.
