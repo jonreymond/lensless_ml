@@ -1,5 +1,5 @@
 # #############################################################################
-# benchmark.py
+# tf_inference.py
 # =================
 # Author :
 # Jonathan REYMOND [jonathan.reymond7@gmail.com]
@@ -10,12 +10,8 @@ import numpy as np
 import time
 import sys
 
-# with inversion
-# model_path = '/root/jreymond/lensless_ml/outputs/2023-06-06/06-56-56/tensorflow/models/wallerlab_unet.pb'
-model_path = '/home/jreymond/lensless_ml/temporary/gen_pruned.pb'
-# model_path = '/home/jreymond/lensless_ml/outputs/2023-06-23/07-02-26/tensorflow/models/gen_unet64.pb'
-# without_inversion
-# model_path = '/root/jreymond/lensless_ml/outputs/2023-06-02/10-40-15/tensorflow/models/wallerlab_unet.pb'
+model_path = '<YOUR STORED MODEL>.pb'
+
 
 use_gpu = True
 
