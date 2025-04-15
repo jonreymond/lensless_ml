@@ -15,7 +15,7 @@ import sys
 import hydra
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
-from tf_dataset import *
+from .model.tf_dataset import get_tf_dataset
 from utils import psnr, ssim
 import matplotlib.pyplot as plt
 import cv2

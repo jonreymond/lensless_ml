@@ -19,8 +19,8 @@ from sklearn.model_selection import train_test_split
 
 
 from model import *
-from callbacks import get_callbacks
-from utils import *
+# from callbacks import get_callbacks
+from utils.utils import *
 
 
 
@@ -28,7 +28,7 @@ import tensorflow as tf
 tf.keras.backend.set_image_data_format('channels_last')
 from keras import backend as K
 
-from tf_dataset import *
+from model.tf_dataset import *
 
 
 from hydra.utils import get_original_cwd, to_absolute_path

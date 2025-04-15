@@ -15,11 +15,13 @@ import numpy as np
 import tensorflow as tf
 import itertools
 from collections import Counter
-from tf_dataset import *
+# from tf_dataset import *
 import sys
 import shutil
 import keras
 from sklearn.model_selection import train_test_split
+
+from model.tf_dataset import get_tf_dataset
   
   
 def representative_data_gen(reconstruct_config, camera_inversion=None, get_train=True, num_samples=None):

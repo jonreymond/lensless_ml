@@ -7,7 +7,7 @@
 
 
 from abc import ABC, abstractmethod
-from utils import *
+from utils.utils import *
 from tensorflow.data import Dataset
 import tensorflow as tf
 import glob
