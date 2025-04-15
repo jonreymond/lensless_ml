@@ -1,4 +1,10 @@
 # Lensless imaging, deep learning, and deploymnent
+## Description
+Lensless imaging provides a large panel of benefits : cost, size, weight, etc., that are crucial for wearable applications, IoT or medical devices. Such setups require the design of reconstruction algorithms to recover the image from the captured measurements. Most of the current SoTA recon- struction models use deep learning, but the results provided are hardly reproducible and mostly not meant to be deployed into embedded systems.
+
+In this work, we implement the work of [Monakhova et al.](https://opg.optica.org/oe/fulltext.cfm?uri=oe-27-20-28075&id=420747) that uses uniquely deep learning, and the work of by [Khan et al](https://arxiv.org/pdf/2010.15440). We then present a way to transform these models to be deployable using TensorFlow Lite, and evaluate the benefits of model optimization techniques such as quantization-aware training(QAT), weight pruning, or weight clustering.
+
+This work is part of a master thesis, where the report can be found [here in the EPFL website](https://infoscience.epfl.ch/entities/publication/50c03138-7854-4097-a9c3-c77571411a65), or in the **`docs/`** folder.
 
 ## Project Structure
 - **`configs/`**: Stores all configuration files used for different aspects of the project, including datasets, models, and training.
@@ -7,6 +13,8 @@
   - **`tflite_conversion`** : this file contains all the information for converting a TensorFlow model to a TfLite model, it is called when we run the script tf_to_tflite.py
   - **`tflite_inference`** : this file contains all the information for running an tflite inference in the python script tflite_inference.py
   - **`train_reconstruction`** : this file contains all the information for training a model in train.py  
+
+- **`docs/`**: Contains the presentation and the report
 
 - **`environments/`**: Contains environment setup files for different CONDA setups.**`lensless_ml.yml`** is the default conda environment configuration.
 - **`example.ipynb`**: Jupyter notebook providing an example of the results we could have using the models
